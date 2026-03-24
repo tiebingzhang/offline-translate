@@ -1,6 +1,8 @@
 # Wolof Translate
 
-`wolof-translate` is a push-to-talk desktop interpreter for spoken **Wolof <-> English** conversations.
+`wolof-translate` is a push-to-talk desktop interpreter for spoken **Wolof <-> English** conversations.  Eventually we may add support to the following languages:
+
+- French <-> English
 
 The planned application will use:
 
@@ -72,6 +74,7 @@ The current research direction is based on these components:
 - Another model for **Wolof -> English** [https://huggingface.co/bilalfaye/whisper-medium-wolof-2-english]
 - A Wolof audio generation model for Wolof TTS [https://huggingface.co/bilalfaye/speecht5_tts-wolof-v0.2]
 - A standard English TTS system for English output audio
+- Facebook mode `seamless-m4t-v2` was considered, but because Wolof is not supported, we are not using that model as of now.
 
 These model choices are still subject to validation based on latency, quality, and packaging constraints for a desktop app.
 
