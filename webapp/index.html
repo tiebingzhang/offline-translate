@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wolof Translate Web App</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Wolof Translate</p>
+        <h1>Push to talk. Capture one utterance. Prepare it for the speech pipeline.</h1>
+        <p class="lede">
+          This browser-first prototype records a single turn, exports it as a WAV file,
+          and exposes the exact blob and metadata that the application server will
+          upload to <code>whisper.cpp</code> in the next task.
+        </p>
+      </section>
+
+      <section class="panel panel-recorder">
+        <div class="status-strip">
+          <span id="statusBadge" class="badge">Idle</span>
+          <span id="statusText" class="status-text">Waiting for microphone access.</span>
+        </div>
+
+        <button id="pushToTalk" class="talk-button" type="button" aria-live="polite">
+          Hold to talk
+        </button>
+
+        <div class="meta-grid">
+          <div class="meta-card">
+            <span class="meta-label">Microphone</span>
+            <strong id="permissionValue">Unknown</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Recorder state</span>
+            <strong id="stateValue">idle</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Duration</span>
+            <strong id="durationValue">0.0s</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Sample rate</span>
+            <strong id="sampleRateValue">Unknown</strong>
+          </div>
+        </div>
+
+        <div class="hint-block">
+          <p>Controls</p>
+          <ul>
+            <li>Press and hold the button with the mouse or touch.</li>
+            <li>Keyboard shortcut: hold the space bar while the page is focused.</li>
+            <li>Serve this page over <code>http://localhost</code> to use microphone access.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="panel panel-output">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Latest Recording</p>
+            <h2>WAV export preview</h2>
+          </div>
+          <a id="downloadLink" class="ghost-link disabled" href="#" download="utterance.wav" aria-disabled="true">
+            Download WAV
+          </a>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-card">
+            <span class="meta-label">Format</span>
+            <strong id="formatValue">No recording yet</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Bytes</span>
+            <strong id="bytesValue">0</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Channels</span>
+            <strong id="channelsValue">1</strong>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Ready for upload</span>
+            <strong id="readyValue">No</strong>
+          </div>
+        </div>
+
+        <audio id="audioPreview" class="audio-preview" controls preload="none"></audio>
+
+        <div class="upload-controls">
+          <label class="field">
+            <span>Application server URL</span>
+            <input id="serverUrl" type="url" />
+          </label>
+          <button id="uploadButton" class="ghost-button" type="button">Upload to server</button>
+        </div>
+
+        <pre id="serverResponse" class="response-box">No upload attempted yet.</pre>
+      </section>
+
+      <section class="panel panel-log">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Recorder Log</p>
+            <h2>Event trace</h2>
+          </div>
+          <button id="clearLog" class="ghost-button" type="button">Clear log</button>
+        </div>
+        <ol id="eventLog" class="event-log"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
