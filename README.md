@@ -116,6 +116,5 @@ This repository is currently an early prototype / research workspace. The main f
 ## Open Questions
 
 - Which Whisper or whisper.cpp-compatible models give the best latency / accuracy tradeoff for local use?
-- Whether both directions can run fully on-device, or if some steps should use external APIs
 - Which English TTS provider is the best fit for quality, speed, and packaging
 - How to package Python + Electron + local models cleanly for distribution
