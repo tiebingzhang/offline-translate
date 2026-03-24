@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import copy
 import email.policy
 import json
 import logging
@@ -7,16 +8,20 @@ import mimetypes
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib import error, request
+from urllib import error, parse, request
 
 WEB_ROOT = Path(__file__).parent / "webapp"
 LOGGER = logging.getLogger("wolof_translate.web_server")
+DEFAULT_DIRECTION = "english_to_wolof"
+SUPPORTED_DIRECTIONS = frozenset({"english_to_wolof", "wolof_to_english"})
 
 
 @dataclass(frozen=True)
@@ -37,12 +42,61 @@ class SpeechConfig:
     request_timeout_seconds: int
 
 
+@dataclass(frozen=True)
+class SayConfig:
+    play: bool
+    voice: str | None
+    rate: int | None
+
+
+class JobStore:
+    def __init__(self):
+        self._jobs = {}
+        self._lock = threading.Lock()
+
+    def create(self, job):
+        with self._lock:
+            self._jobs[job["request_id"]] = copy.deepcopy(job)
+
+    def get(self, request_id):
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None:
+                return None
+            return copy.deepcopy(job)
+
+    def mutate(self, request_id, mutator):
+        with self._lock:
+            job = self._jobs.get(request_id)
+            if job is None:
+                return None
+            mutator(job)
+            job["updated_at_ms"] = now_epoch_ms()
+            return copy.deepcopy(job)
+
+
 def configure_logging(verbose=False):
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+
+
+def now_epoch_ms():
+    return int(time.time() * 1000)
+
+
+def now_monotonic_ms():
+    return int(time.monotonic() * 1000)
+
+
+def get_target_language(direction):
+    if direction == "english_to_wolof":
+        return "wolof"
+    if direction == "wolof_to_english":
+        return "english"
+    raise ValueError(f"Unsupported direction: {direction}")
 
 
 def sniff_audio_format(data):
@@ -191,15 +245,225 @@ def call_speech_server(text, speech_config):
         raise RuntimeError(f"Wolof speech server request failed: {exc.reason}") from exc
 
 
+def speak_english_with_say(text, say_config):
+    if not say_config.play:
+        return {
+            "text": text,
+            "engine": "say",
+            "play": False,
+            "playback_started": False,
+            "skipped": True,
+        }
+
+    say_path = shutil.which("say")
+    if not say_path:
+        raise RuntimeError("macOS 'say' command is not available on this system.")
+
+    command = [say_path]
+    if say_config.voice:
+        command.extend(["-v", say_config.voice])
+    if say_config.rate is not None:
+        command.extend(["-r", str(say_config.rate)])
+    command.append(text)
+
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
+        if stderr_text:
+            raise RuntimeError(f"say failed: {stderr_text}") from exc
+        raise RuntimeError(f"say failed with status {exc.returncode}") from exc
+
+    return {
+        "text": text,
+        "engine": "say",
+        "play": True,
+        "playback_started": True,
+        "voice": say_config.voice,
+        "rate": say_config.rate,
+    }
+
+
+def update_job_stage(job_store, request_id, stage, detail):
+    stage_started_at_ms = now_monotonic_ms()
+
+    def mutator(job):
+        job["status"] = "processing"
+        job["stage"] = stage
+        job["stage_detail"] = detail
+        job["current_stage_started_at_ms"] = stage_started_at_ms
+
+    job_store.mutate(request_id, mutator)
+    return stage_started_at_ms
+
+
+def record_stage_timing(job_store, request_id, stage, started_at_ms, extra_updates=None):
+    duration_ms = now_monotonic_ms() - started_at_ms
+
+    def mutator(job):
+        job["timings_ms"][stage] = duration_ms
+        if extra_updates:
+            job.update(extra_updates)
+
+    job_store.mutate(request_id, mutator)
+
+
+def fail_job(job_store, request_id, stage, exc):
+    LOGGER.exception("[%s] Pipeline failed during %s: %s", request_id, stage, exc)
+
+    def mutator(job):
+        job["status"] = "failed"
+        job["stage"] = "failed"
+        job["stage_detail"] = f"Failed during {stage}."
+        job["error"] = {
+            "message": str(exc),
+            "type": type(exc).__name__,
+            "stage": stage,
+        }
+        job["completed_at_ms"] = now_epoch_ms()
+        if "started_processing_at_ms" in job:
+            job["timings_ms"]["total"] = now_monotonic_ms() - job["started_processing_at_ms"]
+
+    job_store.mutate(request_id, mutator)
+
+
+def complete_job(job_store, request_id, result):
+    def mutator(job):
+        job["status"] = "completed"
+        job["stage"] = "completed"
+        job["stage_detail"] = "Processing finished."
+        job["result"] = result
+        job["completed_at_ms"] = now_epoch_ms()
+        if "started_processing_at_ms" in job:
+            job["timings_ms"]["total"] = now_monotonic_ms() - job["started_processing_at_ms"]
+
+    job_store.mutate(request_id, mutator)
+
+
+def serialize_job_for_response(job):
+    payload = copy.deepcopy(job)
+    payload.pop("started_processing_at_ms", None)
+    payload.pop("current_stage_started_at_ms", None)
+    payload["poll_after_ms"] = 500
+    return payload
+
+
+def process_request_job(request_id, upload, whisper_configs, speech_config, say_config, job_store):
+    stage = "queued"
+    direction = upload["direction"]
+    whisper_config = whisper_configs[direction]
+
+    def start_processing(job):
+        job["status"] = "processing"
+        job["stage"] = "queued"
+        job["stage_detail"] = f"Upload accepted for {direction}. Preparing pipeline."
+        job["started_processing_at_ms"] = now_monotonic_ms()
+
+    job_store.mutate(request_id, start_processing)
+
+    try:
+        stage = "normalizing"
+        started_at_ms = update_job_stage(
+            job_store,
+            request_id,
+            stage,
+            "Normalizing audio to 16 kHz mono PCM WAV.",
+        )
+        normalized_wav = normalize_audio_for_whisper(upload["bytes"], upload["filename"])
+        record_stage_timing(
+            job_store,
+            request_id,
+            stage,
+            started_at_ms,
+            extra_updates={
+                "normalized_format": "wav",
+                "normalized_sample_rate_hz": 16000,
+                "normalized_channels": 1,
+                "normalized_codec": "pcm_s16le",
+            },
+        )
+
+        stage = "transcribing"
+        started_at_ms = update_job_stage(
+            job_store,
+            request_id,
+            stage,
+            "Calling whisper.cpp for transcription and translation.",
+        )
+        whisper_result = call_whisper_server(normalized_wav, whisper_config)
+        record_stage_timing(job_store, request_id, stage, started_at_ms)
+
+        speech_result = None
+        output_mode = "text_only"
+        if direction == "english_to_wolof":
+            stage = "generating_speech"
+            started_at_ms = update_job_stage(
+                job_store,
+                request_id,
+                stage,
+                "Sending Wolof text to the speech server.",
+            )
+            speech_result = call_speech_server(whisper_result["text"], speech_config)
+            record_stage_timing(job_store, request_id, stage, started_at_ms)
+            output_mode = "wolof_audio"
+        elif direction == "wolof_to_english":
+            stage = "generating_speech"
+            started_at_ms = update_job_stage(
+                job_store,
+                request_id,
+                stage,
+                "Speaking English with macOS say.",
+            )
+            speech_result = speak_english_with_say(whisper_result["text"], say_config)
+            record_stage_timing(job_store, request_id, stage, started_at_ms)
+            output_mode = "english_audio"
+
+        complete_job(
+            job_store,
+            request_id,
+            {
+                "direction": direction,
+                "target_language": get_target_language(direction),
+                "translated_text": whisper_result["text"],
+                "whisper_response": whisper_result["raw_response"],
+                "output_mode": output_mode,
+                "speech_result": speech_result,
+            },
+        )
+    except Exception as exc:
+        fail_job(job_store, request_id, stage, exc)
+
+
 class WebAppRequestHandler(BaseHTTPRequestHandler):
     server_version = "WolofTranslateWebServer/0.1"
 
     def do_GET(self):
-        if self.path in {"/health", "/api/health"}:
+        parsed_path = parse.urlparse(self.path)
+        route_path = parsed_path.path
+
+        if route_path in {"/health", "/api/health"}:
             self._write_json(HTTPStatus.OK, {"status": "ok"})
             return
 
-        relative_path = "index.html" if self.path == "/" else self.path.lstrip("/")
+        if route_path.startswith("/api/requests/"):
+            request_id = route_path.rsplit("/", 1)[-1]
+            job = self.server.job_store.get(request_id)
+            if job is None:
+                self._write_json(
+                    HTTPStatus.NOT_FOUND,
+                    {"error": {"message": "Request not found.", "type": "NotFound"}, "request_id": request_id},
+                )
+                return
+
+            self._write_json(HTTPStatus.OK, serialize_job_for_response(job))
+            return
+
+        relative_path = "index.html" if route_path == "/" else route_path.lstrip("/")
         asset_path = (WEB_ROOT / relative_path).resolve()
 
         if WEB_ROOT not in asset_path.parents and asset_path != WEB_ROOT / "index.html":
@@ -219,60 +483,102 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(file_obj.read())
 
     def do_POST(self):
-        request_id = uuid.uuid4().hex[:8]
-        if self.path != "/api/translate-speak":
+        parsed_path = parse.urlparse(self.path)
+        route_path = parsed_path.path
+
+        if route_path != "/api/translate-speak":
             self._write_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
 
+        request_id = uuid.uuid4().hex[:8]
         try:
             upload = self._read_multipart_audio()
         except ValueError as exc:
             LOGGER.warning("[%s] Invalid upload: %s", request_id, exc)
-            self._write_json(HTTPStatus.BAD_REQUEST, {"error": str(exc), "request_id": request_id})
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "request_id": request_id,
+                    "status": "failed",
+                    "error": {
+                        "message": str(exc),
+                        "type": "BadRequest",
+                        "stage": "upload_validation",
+                    },
+                },
+            )
+            return
+
+        if upload["direction"] not in SUPPORTED_DIRECTIONS:
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "request_id": request_id,
+                    "status": "failed",
+                    "error": {
+                        "message": f"Unsupported direction: {upload['direction']}",
+                        "type": "BadRequest",
+                        "stage": "upload_validation",
+                    },
+                },
+            )
             return
 
         detected_format = sniff_audio_format(upload["bytes"])
-
         LOGGER.info(
-            "[%s] Received upload filename=%s bytes=%s content_type=%s detected_format=%s",
+            "[%s] Received upload direction=%s filename=%s bytes=%s content_type=%s detected_format=%s",
             request_id,
+            upload["direction"],
             upload["filename"],
             len(upload["bytes"]),
             upload["content_type"],
             detected_format,
         )
 
-        try:
-            normalized_wav = normalize_audio_for_whisper(upload["bytes"], upload["filename"])
-            whisper_result = call_whisper_server(normalized_wav, self.server.whisper_config)
-            speech_result = call_speech_server(whisper_result["text"], self.server.speech_config)
-        except Exception as exc:
-            LOGGER.exception("[%s] Pipeline failed: %s", request_id, exc)
-            self._write_json(
-                HTTPStatus.BAD_GATEWAY,
-                {
-                    "error": str(exc),
-                    "request_id": request_id,
-                },
-            )
-            return
-
-        response = {
+        job = {
             "request_id": request_id,
-            "status": "completed",
+            "status": "queued",
+            "stage": "queued",
+            "stage_detail": "Upload accepted. Waiting to start processing.",
+            "direction": upload["direction"],
+            "target_language": get_target_language(upload["direction"]),
             "filename": upload["filename"],
             "content_type": upload["content_type"],
             "bytes_received": len(upload["bytes"]),
             "detected_format": detected_format,
-            "normalized_format": "wav",
-            "normalized_sample_rate_hz": 16000,
-            "normalized_channels": 1,
-            "normalized_codec": "pcm_s16le",
-            "whisper_text": whisper_result["text"],
-            "whisper_response": whisper_result["raw_response"],
-            "speech_result": speech_result,
+            "created_at_ms": now_epoch_ms(),
+            "updated_at_ms": now_epoch_ms(),
+            "timings_ms": {},
+            "result": None,
+            "error": None,
         }
-        self._write_json(HTTPStatus.OK, response)
+        self.server.job_store.create(job)
+
+        worker = threading.Thread(
+            target=process_request_job,
+            args=(
+                request_id,
+                upload,
+                self.server.whisper_configs,
+                self.server.speech_config,
+                self.server.say_config,
+                self.server.job_store,
+            ),
+            daemon=True,
+        )
+        worker.start()
+
+        self._write_json(
+            HTTPStatus.ACCEPTED,
+            {
+                "request_id": request_id,
+                "status": "queued",
+                "stage": "queued",
+                "direction": upload["direction"],
+                "status_url": f"/api/requests/{request_id}",
+                "poll_after_ms": 500,
+            },
+        )
 
     def log_message(self, format, *args):
         LOGGER.info("HTTP %s - %s", self.client_address[0], format % args)
@@ -299,10 +605,14 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Invalid multipart payload.")
 
         upload_part = None
+        direction = DEFAULT_DIRECTION
         for part in message.iter_parts():
-            if part.get_param("name", header="content-disposition") == "file":
+            part_name = part.get_param("name", header="content-disposition")
+            if part_name == "file":
                 upload_part = part
-                break
+                continue
+            if part_name == "direction":
+                direction = (part.get_content() or "").strip() or DEFAULT_DIRECTION
 
         if upload_part is None:
             raise ValueError("Missing 'file' field in multipart upload.")
@@ -313,6 +623,7 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Uploaded file is empty.")
 
         return {
+            "direction": direction,
             "filename": Path(filename).name,
             "content_type": upload_part.get_content_type() or "application/octet-stream",
             "bytes": payload,
@@ -327,16 +638,25 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
 
-def serve(host="127.0.0.1", port=8090, whisper_config=None, speech_config=None, verbose=False):
+def serve(host="127.0.0.1", port=8090, whisper_configs=None, speech_config=None, say_config=None, verbose=False):
     configure_logging(verbose=verbose)
     server = ThreadingHTTPServer((host, port), WebAppRequestHandler)
-    server.whisper_config = whisper_config or WhisperConfig(
-        url="http://127.0.0.1:8080/inference",
-        temperature="0.0",
-        temperature_inc="0.2",
-        response_format="json",
-        request_timeout_seconds=120,
-    )
+    server.whisper_configs = whisper_configs or {
+        "english_to_wolof": WhisperConfig(
+            url="http://127.0.0.1:8080/inference",
+            temperature="0.0",
+            temperature_inc="0.2",
+            response_format="json",
+            request_timeout_seconds=120,
+        ),
+        "wolof_to_english": WhisperConfig(
+            url="http://127.0.0.1:8081/inference",
+            temperature="0.0",
+            temperature_inc="0.2",
+            response_format="json",
+            request_timeout_seconds=120,
+        ),
+    }
     server.speech_config = speech_config or SpeechConfig(
         url="http://127.0.0.1:8001/speak",
         play=True,
@@ -344,6 +664,12 @@ def serve(host="127.0.0.1", port=8090, whisper_config=None, speech_config=None, 
         output_path=None,
         request_timeout_seconds=120,
     )
+    server.say_config = say_config or SayConfig(
+        play=True,
+        voice=None,
+        rate=None,
+    )
+    server.job_store = JobStore()
     LOGGER.info("Web app server listening on http://%s:%s", host, port)
     server.serve_forever()
 
@@ -357,7 +683,12 @@ def main():
     parser.add_argument(
         "--whisper-url",
         default="http://127.0.0.1:8080/inference",
-        help="whisper.cpp inference endpoint.",
+        help="English-to-Wolof whisper.cpp inference endpoint.",
+    )
+    parser.add_argument(
+        "--whisper-url-wolof-to-english",
+        default="http://127.0.0.1:8081/inference",
+        help="Wolof-to-English whisper.cpp inference endpoint.",
     )
     parser.add_argument(
         "--whisper-temperature",
@@ -407,6 +738,22 @@ def main():
         help="Timeout when waiting for the Wolof speech server.",
     )
     parser.add_argument(
+        "--english-no-play",
+        action="store_true",
+        help="Disable macOS say playback for Wolof-to-English requests.",
+    )
+    parser.add_argument(
+        "--english-say-voice",
+        default=None,
+        help="Optional macOS say voice for English playback.",
+    )
+    parser.add_argument(
+        "--english-say-rate",
+        type=int,
+        default=None,
+        help="Optional macOS say speaking rate in words per minute.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging.",
@@ -415,19 +762,33 @@ def main():
     serve(
         host=args.host,
         port=args.port,
-        whisper_config=WhisperConfig(
-            url=args.whisper_url,
-            temperature=args.whisper_temperature,
-            temperature_inc=args.whisper_temperature_inc,
-            response_format=args.whisper_response_format,
-            request_timeout_seconds=args.whisper_timeout_seconds,
-        ),
+        whisper_configs={
+            "english_to_wolof": WhisperConfig(
+                url=args.whisper_url,
+                temperature=args.whisper_temperature,
+                temperature_inc=args.whisper_temperature_inc,
+                response_format=args.whisper_response_format,
+                request_timeout_seconds=args.whisper_timeout_seconds,
+            ),
+            "wolof_to_english": WhisperConfig(
+                url=args.whisper_url_wolof_to_english,
+                temperature=args.whisper_temperature,
+                temperature_inc=args.whisper_temperature_inc,
+                response_format=args.whisper_response_format,
+                request_timeout_seconds=args.whisper_timeout_seconds,
+            ),
+        },
         speech_config=SpeechConfig(
             url=args.speech_server_url,
             play=not args.speech_no_play,
             wait=args.speech_wait,
             output_path=args.speech_output_path,
             request_timeout_seconds=args.speech_timeout_seconds,
+        ),
+        say_config=SayConfig(
+            play=not args.english_no_play,
+            voice=args.english_say_voice,
+            rate=args.english_say_rate,
         ),
         verbose=args.verbose,
     )

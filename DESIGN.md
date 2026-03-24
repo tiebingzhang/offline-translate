@@ -2,14 +2,14 @@
 
 ## Objective
 
-Build a **web-first push-to-talk translator** for **English -> Wolof** conversation, then later wrap the same flow in Electron.
+Build a **web-first push-to-talk translator** for **English <-> Wolof** conversation, then later wrap the same flow in Electron.
 
 The first version should optimize for:
 
 - fast iteration
 - simple operational flow
 - stable transcription and translation
-- direct Wolof audio playback
+- direct Wolof and English audio playback
 
 The first release target is **not** simultaneous interpreting. It is a turn-based conversational tool:
 
@@ -20,13 +20,23 @@ The first release target is **not** simultaneous interpreting. It is a turn-base
 5. Wolof audio is played
 6. the next turn begins
 
-## Scope For V1
+## Scope
 
-V1 is limited to **English -> Wolof**.
+The current implementation supports **English -> Wolof**.
 
-The English speech recognition path will use a Whisper-family model served through the `whisper.cpp` HTTP server. The chosen model should perform **transcription + translation in one step**, returning Wolof text directly if the model supports that behavior.
+The next expansion adds **Wolof -> English** with a second `whisper.cpp` server and macOS text-to-speech.
 
-The Wolof speech generation path will use the existing local Python speech code in [app.py](/Users/tzhang/code/wolof-translate/app.py).
+Current direction:
+
+- **English -> Wolof**
+  - input ASR/translation: `whisper.cpp` server on `localhost:8080`
+  - output speech: Wolof speech generation from [app.py](/Users/tzhang/code/wolof-translate/app.py)
+
+Planned additional direction:
+
+- **Wolof -> English**
+  - input ASR/translation: `whisper.cpp` server on `localhost:8081`
+  - output speech: macOS `say`
 
 ## Product Direction
 
@@ -49,9 +59,15 @@ Responsibilities:
 
 - capture microphone audio in the browser
 - encode the utterance as WAV
+- let the user choose the input language direction with dedicated push-to-talk controls
 - show progress states
 - submit the audio to the application server
-- play returned or generated Wolof audio
+- show returned text and output metadata
+
+The UI should expose **two large push-to-talk buttons**:
+
+- `English -> Wolof`
+- `Wolof -> English`
 
 Suggested UI states:
 
@@ -68,12 +84,14 @@ Suggested UI states:
 Responsibilities:
 
 - receive recorded WAV audio from the web app
-- forward audio to the local `whisper.cpp` server
-- receive Wolof text
-- forward Wolof text to a Wolof speech service
+- route the request by input language / direction
+- forward audio to the correct local `whisper.cpp` server
+- receive Wolof or English text
+- forward Wolof text to the Wolof speech service
+- invoke macOS `say` for English output
 - return structured status and output metadata to the frontend
 
-This server should be the single orchestrator for the v1 flow.
+This server should be the single orchestrator for both directions.
 
 ### `whisper.cpp` Server
 
@@ -83,7 +101,10 @@ Responsibilities:
 - run the selected Whisper-family model
 - return the recognized / translated text
 
-For v1, this should be treated as an external local dependency started alongside the app.
+There are now two local `whisper.cpp` dependencies:
+
+- `localhost:8080` for **English -> Wolof**
+- `localhost:8081` for **Wolof -> English**
 
 ### Wolof Speech Server
 
@@ -98,17 +119,41 @@ This should be implemented as a small HTTP server built around the TTS primitive
 
 Note: the current text translation / TTS server in [translate.py](/Users/tzhang/code/wolof-translate/translate.py) is oriented around **English text -> Wolof text -> Wolof audio**. V1 of this design instead assumes `whisper.cpp` returns Wolof text directly, so the new speech server can focus on **Wolof text -> Wolof audio playback**.
 
-## V1 Request Flow
+### English Speech Output
+
+Responsibilities:
+
+- accept English text generated from the Wolof-input pipeline
+- speak it with the macOS `say` command
+
+The local `say` interface supports direct playback of text and optional file output, but the current plan is to use it for **direct playback only**.
+
+## Request Flows
+
+### English -> Wolof
 
 ```text
 browser microphone
 -> browser records one utterance
 -> browser encodes WAV
 -> web app server
--> whisper.cpp server
+-> whisper.cpp server :8080
 -> Wolof text
 -> Wolof speech server
 -> generated Wolof audio playback
+```
+
+### Wolof -> English
+
+```text
+browser microphone
+-> browser records one utterance
+-> browser encodes WAV
+-> web app server
+-> whisper.cpp server :8081
+-> English text
+-> macOS say
+-> spoken English playback
 ```
 
 ## Audio Segmentation Decision
@@ -150,11 +195,12 @@ Suggested endpoint:
 Suggested request:
 
 - multipart form upload with one recorded WAV file
+- include direction metadata, for example `english_to_wolof` or `wolof_to_english`
 
 Suggested response:
 
 - recognized text metadata
-- Wolof text
+- translated text
 - playback or output-audio metadata
 - timing information for each stage
 - error details when relevant
@@ -194,6 +240,7 @@ Integration implication:
 - the uploaded field name should be `file`
 - the parser should treat `text` as the primary output from `whisper.cpp`
 - temperature and response-format options should be configurable in the application server
+- the application server should choose port `8080` or `8081` based on the requested direction
 
 ### Application Server -> Wolof Speech Server
 
@@ -212,6 +259,13 @@ Suggested JSON body:
 ```
 
 This endpoint should directly synthesize and play Wolof speech using the TTS helpers in [app.py](/Users/tzhang/code/wolof-translate/app.py).
+
+### Application Server -> macOS `say`
+
+Suggested behavior:
+
+- invoke `say "English text here"` for direct playback
+- optionally support `-v` and `-r` flags later if voice or rate tuning is needed
 
 ## Initial Non-Goals
 
@@ -250,5 +304,9 @@ End-to-end English speech -> Wolof text -> Wolof speech playback.
 Web UI displays progress clearly for each stage.
 
 ### Milestone 5
+
+Add Wolof-input routing and English speech playback.
+
+### Milestone 6
 
 Wrap the proven flow in Electron.

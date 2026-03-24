@@ -13,16 +13,21 @@ const state = {
   latestBlob: null,
   latestObjectUrl: null,
   isUploading: false,
+  currentRequestId: null,
+  lastSeenStage: null,
+  selectedDirection: "english_to_wolof",
+  activeButton: null,
 };
 
 const els = {
-  pushToTalk: document.querySelector("#pushToTalk"),
+  talkButtons: Array.from(document.querySelectorAll("[data-direction]")),
   statusBadge: document.querySelector("#statusBadge"),
   statusText: document.querySelector("#statusText"),
   permissionValue: document.querySelector("#permissionValue"),
   stateValue: document.querySelector("#stateValue"),
   durationValue: document.querySelector("#durationValue"),
   sampleRateValue: document.querySelector("#sampleRateValue"),
+  directionValue: document.querySelector("#directionValue"),
   formatValue: document.querySelector("#formatValue"),
   bytesValue: document.querySelector("#bytesValue"),
   channelsValue: document.querySelector("#channelsValue"),
@@ -36,6 +41,16 @@ const els = {
   clearLog: document.querySelector("#clearLog"),
 };
 
+function formatDirection(direction) {
+  if (direction === "english_to_wolof") {
+    return "English -> Wolof";
+  }
+  if (direction === "wolof_to_english") {
+    return "Wolof -> English";
+  }
+  return titleCase(direction);
+}
+
 function setUiState(nextState, detail) {
   state.uiState = nextState;
   els.stateValue.textContent = nextState;
@@ -47,34 +62,43 @@ function setUiState(nextState, detail) {
     case "recording":
       badge.classList.add("recording");
       badge.textContent = "Recording";
-      els.pushToTalk.classList.add("is-recording");
       break;
     case "ready":
       badge.classList.add("ready");
       badge.textContent = "Ready";
-      els.pushToTalk.classList.remove("is-recording");
       break;
     case "error":
       badge.classList.add("error");
       badge.textContent = "Error";
-      els.pushToTalk.classList.remove("is-recording");
       break;
     default:
       badge.textContent = titleCase(nextState);
-      els.pushToTalk.classList.remove("is-recording");
       break;
+  }
+
+  for (const button of els.talkButtons) {
+    button.classList.toggle("is-recording", button === state.activeButton && nextState === "recording");
   }
 
   els.statusText.textContent = detail;
 }
 
 function titleCase(value) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function updatePermission(value) {
   state.permission = value;
   els.permissionValue.textContent = value;
+}
+
+function setSelectedDirection(direction) {
+  state.selectedDirection = direction;
+  els.directionValue.textContent = formatDirection(direction);
 }
 
 function appendLog(message) {
@@ -113,7 +137,57 @@ function publishRecording(blob, metadata) {
   els.bytesValue.textContent = String(blob.size);
   els.channelsValue.textContent = String(metadata.channels);
   els.readyValue.textContent = "Yes";
-  appendLog(`Prepared WAV blob for upload (${blob.size} bytes).`);
+  appendLog(`Prepared WAV blob for upload (${blob.size} bytes) for ${state.selectedDirection}.`);
+}
+
+function resolveStatusUrl(statusUrl) {
+  return new URL(statusUrl, window.location.origin).toString();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function updateUiFromJob(job) {
+  if (job.stage && job.stage !== state.lastSeenStage) {
+    appendLog(`Request ${job.request_id} entered stage ${job.stage}.`);
+    state.lastSeenStage = job.stage;
+  }
+
+  switch (job.stage) {
+    case "queued":
+      setUiState("uploading", job.stage_detail || "Upload accepted.");
+      break;
+    case "normalizing":
+      setUiState("processing", job.stage_detail || "Normalizing audio.");
+      break;
+    case "transcribing":
+      setUiState("transcribing", job.stage_detail || "Calling whisper.cpp.");
+      break;
+    case "generating_speech":
+      setUiState("generating_speech", job.stage_detail || "Generating speech.");
+      break;
+    case "completed":
+      setUiState("ready", job.stage_detail || "Pipeline complete.");
+      if (job.timings_ms?.total) {
+        appendLog(`Request ${job.request_id} completed in ${job.timings_ms.total} ms.`);
+      }
+      if (job.result?.translated_text) {
+        appendLog(`Translated text: ${job.result.translated_text}`);
+      }
+      if (job.direction) {
+        appendLog(`Completed direction ${formatDirection(job.direction)}.`);
+      }
+      break;
+    case "failed":
+      setUiState("error", job.error?.message || job.stage_detail || "Request failed.");
+      break;
+    default:
+      setUiState(job.stage || "processing", job.stage_detail || "Processing request.");
+      break;
+  }
 }
 
 function getDefaultServerUrl() {
@@ -219,11 +293,13 @@ async function ensureMicrophoneStream() {
   }
 }
 
-async function startRecording() {
+async function startRecording(direction, button) {
   if (state.isRecording) {
     return;
   }
 
+  setSelectedDirection(direction);
+  state.activeButton = button;
   clearLatestBlob();
   const stream = await ensureMicrophoneStream();
 
@@ -254,8 +330,8 @@ async function startRecording() {
   state.isRecording = true;
   state.recordingStartedAt = performance.now();
   els.durationValue.textContent = "0.0s";
-  setUiState("recording", "Recording one utterance. Release to stop.");
-  appendLog("Recording started.");
+  setUiState("recording", `Recording ${formatDirection(direction)}. Release to stop.`);
+  appendLog(`Recording started for ${formatDirection(direction)}.`);
 
   stopDurationTimer();
   state.recordingTimerId = window.setInterval(updateDuration, 100);
@@ -290,6 +366,7 @@ function stopRecording() {
   if (totalLength === 0 || durationSeconds < 0.15) {
     setUiState("idle", "Recording was too short. Hold to talk again.");
     appendLog("Recording discarded because it was too short.");
+    state.activeButton = null;
     return;
   }
 
@@ -302,8 +379,9 @@ function stopRecording() {
   });
   setUiState("ready", "Recording complete. Starting upload.");
   appendLog(
-    `Recording stopped after ${durationSeconds.toFixed(2)}s at ${state.sampleRate} Hz.`,
+    `Recording for ${formatDirection(state.selectedDirection)} stopped after ${durationSeconds.toFixed(2)}s at ${state.sampleRate} Hz.`,
   );
+  state.activeButton = null;
   void uploadLatestRecording();
 }
 
@@ -326,11 +404,16 @@ async function uploadLatestRecording() {
 
   const form = new FormData();
   form.append("file", state.latestBlob, "utterance.wav");
+  form.append("direction", state.selectedDirection);
 
   state.isUploading = true;
   els.uploadButton.disabled = true;
+  state.currentRequestId = null;
+  state.lastSeenStage = null;
   setUiState("uploading", "Uploading WAV to the application server.");
-  appendLog(`Uploading ${state.latestBlob.size} bytes to ${targetUrl}.`);
+  appendLog(
+    `Uploading ${state.latestBlob.size} bytes to ${targetUrl} for ${state.selectedDirection}.`,
+  );
 
   try {
     const response = await fetch(targetUrl, {
@@ -341,11 +424,12 @@ async function uploadLatestRecording() {
     els.serverResponse.textContent = JSON.stringify(payload, null, 2);
 
     if (!response.ok) {
-      throw new Error(payload.error || `Upload failed with status ${response.status}`);
+      throw new Error(payload.error?.message || payload.error || `Upload failed with status ${response.status}`);
     }
 
-    setUiState("ready", "Upload accepted by the application server.");
+    state.currentRequestId = payload.request_id;
     appendLog(`Server accepted upload request ${payload.request_id}.`);
+    await pollRequestStatus(resolveStatusUrl(payload.status_url), payload.poll_after_ms || 500);
   } catch (error) {
     setUiState("error", error.message);
     appendLog(`Upload failed: ${error.message}`);
@@ -355,11 +439,36 @@ async function uploadLatestRecording() {
   }
 }
 
+async function pollRequestStatus(statusUrl, pollAfterMs) {
+  while (true) {
+    await delay(pollAfterMs);
+    const response = await fetch(statusUrl, { method: "GET" });
+    const payload = await response.json();
+    els.serverResponse.textContent = JSON.stringify(payload, null, 2);
+
+    if (!response.ok) {
+      throw new Error(payload.error?.message || `Polling failed with status ${response.status}`);
+    }
+
+    updateUiFromJob(payload);
+
+    if (payload.status === "completed") {
+      return payload;
+    }
+
+    if (payload.status === "failed") {
+      throw new Error(payload.error?.message || "Request failed.");
+    }
+  }
+}
+
 function attachPushToTalkHandlers() {
   const start = async (event) => {
     event.preventDefault();
+    const button = event.currentTarget;
+    const direction = button.dataset.direction;
     try {
-      await startRecording();
+      await startRecording(direction, button);
     } catch (error) {
       console.error(error);
     }
@@ -370,36 +479,12 @@ function attachPushToTalkHandlers() {
     stopRecording();
   };
 
-  els.pushToTalk.addEventListener("pointerdown", start);
-  els.pushToTalk.addEventListener("pointerup", stop);
-  els.pushToTalk.addEventListener("pointerleave", stop);
-  els.pushToTalk.addEventListener("pointercancel", stop);
-
-  window.addEventListener("keydown", async (event) => {
-    if (event.code !== "Space" || event.repeat) {
-      return;
-    }
-
-    if (document.activeElement && /input|textarea|select/i.test(document.activeElement.tagName)) {
-      return;
-    }
-
-    event.preventDefault();
-    try {
-      await startRecording();
-    } catch (error) {
-      console.error(error);
-    }
-  });
-
-  window.addEventListener("keyup", (event) => {
-    if (event.code !== "Space") {
-      return;
-    }
-
-    event.preventDefault();
-    stopRecording();
-  });
+  for (const button of els.talkButtons) {
+    button.addEventListener("pointerdown", start);
+    button.addEventListener("pointerup", stop);
+    button.addEventListener("pointerleave", stop);
+    button.addEventListener("pointercancel", stop);
+  }
 }
 
 async function hydratePermissions() {
@@ -433,6 +518,7 @@ function bindUi() {
 
 async function init() {
   setUiState("idle", "Ready to request microphone access.");
+  setSelectedDirection(state.selectedDirection);
   bindUi();
   attachPushToTalkHandlers();
   await hydratePermissions();

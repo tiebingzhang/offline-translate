@@ -24,9 +24,26 @@
           <span id="statusText" class="status-text">Waiting for microphone access.</span>
         </div>
 
-        <button id="pushToTalk" class="talk-button" type="button" aria-live="polite">
-          Hold to talk
-        </button>
+        <div class="direction-grid">
+          <button
+            class="talk-button"
+            type="button"
+            data-direction="english_to_wolof"
+            aria-live="polite"
+          >
+            <span class="talk-label">English -> Wolof</span>
+            <span class="talk-subtitle">Hold to speak English</span>
+          </button>
+          <button
+            class="talk-button talk-button-secondary"
+            type="button"
+            data-direction="wolof_to_english"
+            aria-live="polite"
+          >
+            <span class="talk-label">Wolof -> English</span>
+            <span class="talk-subtitle">Hold to speak Wolof</span>
+          </button>
+        </div>
 
         <div class="meta-grid">
           <div class="meta-card">
@@ -45,13 +62,17 @@
             <span class="meta-label">Sample rate</span>
             <strong id="sampleRateValue">Unknown</strong>
           </div>
+          <div class="meta-card">
+            <span class="meta-label">Active direction</span>
+            <strong id="directionValue">English -> Wolof</strong>
+          </div>
         </div>
 
         <div class="hint-block">
           <p>Controls</p>
           <ul>
-            <li>Press and hold the button with the mouse or touch.</li>
-            <li>Keyboard shortcut: hold the space bar while the page is focused.</li>
+            <li>Press and hold either button with the mouse or touch.</li>
+            <li>Each button sets the input language direction for that utterance.</li>
             <li>Serve this page over <code>http://localhost</code> to use microphone access.</li>
           </ul>
         </div>
