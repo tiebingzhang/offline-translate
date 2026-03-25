@@ -12,14 +12,13 @@ The UI is served from `web_server.py` and lives in `webapp/`.
 ## Requirements
 
 - Python `3.12+`
-- `pip`
+- `pip` (or uv)
 - A separate `whisper.cpp` checkout with the HTTP server binary built
 - Two GGUF Whisper models:
   - `whisper-medium-english-2-wolof.gguf`
   - `whisper-small-wolof.gguf`
 - Audio playback:
-  - macOS: built-in `say` is used for English playback and `afplay` can be used for WAV playback
-  - Linux/non-macOS: install `ffplay` and start the web server with `--english-no-play`
+  - macOS: built-in `say` is used for English playback
 
 ## Installation
 
@@ -48,13 +47,7 @@ This repository does not vendor `whisper.cpp`. Build it separately, then point t
 Recent `whisper.cpp` builds often expose the server as:
 
 ```bash
-~/code/whisper.cpp/build/bin/server
-```
-
-Older/local setups may use:
-
-```bash
-~/code/whisper.cpp/whisper-server
+~/code/whisper.cpp/build/bin/whisper-server
 ```
 
 The examples below use an environment variable so you can swap in whichever binary your checkout produced.
@@ -66,7 +59,7 @@ Start each service in its own terminal from the repository root.
 ### 1. Start the English -> Wolof `whisper.cpp` server
 
 ```bash
-export WHISPER_SERVER=~/code/whisper.cpp/build/bin/server
+export WHISPER_SERVER=~/code/whisper.cpp/build/bin/whisper-server
 
 $WHISPER_SERVER \
   --port 8080 \
@@ -106,12 +99,6 @@ source .venv/bin/activate
 python web_server.py --port 8090
 ```
 
-On non-macOS systems, disable English playback:
-
-```bash
-python web_server.py --port 8090 --english-no-play
-```
-
 ### 6. Open the UI
 
 Open:
@@ -128,12 +115,6 @@ Then:
 4. Wait for the job stages to complete in the UI
 
 The browser client records audio and uploads it as `utterance.wav`, so you do not need to prepare WAV files manually for normal use.
-
-## Useful Endpoints
-
-- Web app health: `http://127.0.0.1:8090/health`
-- Wolof speech server health: `http://127.0.0.1:8001/health`
-- Wolof -> English translation server health: `http://127.0.0.1:8002/health`
 
 ## Notes
 
