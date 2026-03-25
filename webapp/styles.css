@@ -316,6 +316,13 @@ body::before {
   margin-top: 18px;
 }
 
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -395,6 +402,10 @@ code {
 
   .upload-controls {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .upload-actions {
+    width: 100%;
   }
 
   .direction-grid {

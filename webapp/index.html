@@ -80,7 +80,7 @@
         <div class="meta-grid">
           <div class="meta-card">
             <span class="meta-label">Format</span>
-            <strong id="formatValue">No recording yet</strong>
+            <strong id="formatValue">No WAV loaded yet</strong>
           </div>
           <div class="meta-card">
             <span class="meta-label">Bytes</span>
@@ -103,7 +103,11 @@
             <span>Application server URL</span>
             <input id="serverUrl" type="url" />
           </label>
-          <button id="uploadButton" class="ghost-button" type="button">Upload to server</button>
+          <div class="upload-actions">
+            <input id="diskWavInput" type="file" accept=".wav,audio/wav" hidden />
+            <button id="pickWavButton" class="ghost-button" type="button">Use WAV from disk</button>
+            <button id="uploadButton" class="ghost-button" type="button">Upload to server</button>
+          </div>
         </div>
 
         <pre id="serverResponse" class="response-box">No upload attempted yet.</pre>

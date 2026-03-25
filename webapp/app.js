@@ -11,6 +11,7 @@ const state = {
   recordingTimerId: null,
   sampleRate: null,
   latestBlob: null,
+  latestBlobName: null,
   latestObjectUrl: null,
   isUploading: false,
   currentRequestId: null,
@@ -38,6 +39,8 @@ const els = {
   audioPreview: document.querySelector("#audioPreview"),
   downloadLink: document.querySelector("#downloadLink"),
   serverUrl: document.querySelector("#serverUrl"),
+  diskWavInput: document.querySelector("#diskWavInput"),
+  pickWavButton: document.querySelector("#pickWavButton"),
   uploadButton: document.querySelector("#uploadButton"),
   serverResponse: document.querySelector("#serverResponse"),
   eventLog: document.querySelector("#eventLog"),
@@ -124,31 +127,35 @@ function clearLatestBlob() {
   }
 
   state.latestBlob = null;
+  state.latestBlobName = null;
   state.latestObjectUrl = null;
   els.audioPreview.removeAttribute("src");
   els.audioPreview.load();
   els.downloadLink.href = "#";
+  els.downloadLink.download = "utterance.wav";
   els.downloadLink.classList.add("disabled");
   els.downloadLink.setAttribute("aria-disabled", "true");
-  els.formatValue.textContent = "No recording yet";
+  els.formatValue.textContent = "No WAV loaded yet";
   els.bytesValue.textContent = "0";
+  els.channelsValue.textContent = "1";
   els.readyValue.textContent = "No";
   els.serverResponse.textContent = "No upload attempted yet.";
 }
 
-function publishRecording(blob, metadata) {
+function publishWavPreview(blob, metadata, options = {}) {
   clearLatestBlob();
   state.latestBlob = blob;
+  state.latestBlobName = options.fileName || "utterance.wav";
   state.latestObjectUrl = URL.createObjectURL(blob);
   els.audioPreview.src = state.latestObjectUrl;
   els.downloadLink.href = state.latestObjectUrl;
+  els.downloadLink.download = state.latestBlobName;
   els.downloadLink.classList.remove("disabled");
   els.downloadLink.setAttribute("aria-disabled", "false");
-  els.formatValue.textContent = `WAV / PCM16 / ${metadata.sampleRate} Hz`;
+  els.formatValue.textContent = formatWavSummary(metadata);
   els.bytesValue.textContent = String(blob.size);
   els.channelsValue.textContent = String(metadata.channels);
   els.readyValue.textContent = "Yes";
-  appendLog(`Prepared WAV blob for upload (${blob.size} bytes) for ${state.selectedDirection}.`);
 }
 
 function resolveStatusUrl(statusUrl) {
@@ -258,10 +265,100 @@ function encodeWavFromFloat32(samples, sampleRate, channels = 1) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+function formatWavSummary(metadata) {
+  return `WAV / ${describeWavEncoding(metadata.audioFormat, metadata.bitsPerSample)} / ${metadata.sampleRate} Hz`;
+}
+
+function describeWavEncoding(audioFormat = 1, bitsPerSample = 16) {
+  switch (audioFormat) {
+    case 1:
+      return `PCM${bitsPerSample}`;
+    case 3:
+      return `Float${bitsPerSample}`;
+    case 6:
+      return "A-law";
+    case 7:
+      return "mu-law";
+    case 65534:
+      return bitsPerSample ? `Extensible ${bitsPerSample}-bit` : "Extensible";
+    default:
+      return bitsPerSample ? `Format ${audioFormat} / ${bitsPerSample}-bit` : `Format ${audioFormat}`;
+  }
+}
+
 function writeAscii(view, offset, text) {
   for (let i = 0; i < text.length; i += 1) {
     view.setUint8(offset + i, text.charCodeAt(i));
   }
+}
+
+function readAscii(view, offset, length) {
+  let output = "";
+  for (let i = 0; i < length; i += 1) {
+    output += String.fromCharCode(view.getUint8(offset + i));
+  }
+  return output;
+}
+
+async function readWavMetadata(blob) {
+  const buffer = await blob.arrayBuffer();
+  const view = new DataView(buffer);
+
+  if (view.byteLength < 44) {
+    throw new Error("Selected file is too small to be a valid WAV file.");
+  }
+
+  if (readAscii(view, 0, 4) !== "RIFF" || readAscii(view, 8, 4) !== "WAVE") {
+    throw new Error("Selected file is not a valid RIFF/WAVE file.");
+  }
+
+  let fmtChunk = null;
+  let dataChunkBytes = 0;
+  let offset = 12;
+
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = readAscii(view, offset, 4);
+    const chunkSize = view.getUint32(offset + 4, true);
+    const chunkDataOffset = offset + 8;
+
+    if (chunkDataOffset + chunkSize > view.byteLength) {
+      break;
+    }
+
+    if (chunkId === "fmt ") {
+      if (chunkSize < 16) {
+        throw new Error("Selected WAV file has an invalid fmt chunk.");
+      }
+
+      fmtChunk = {
+        audioFormat: view.getUint16(chunkDataOffset, true),
+        channels: view.getUint16(chunkDataOffset + 2, true),
+        sampleRate: view.getUint32(chunkDataOffset + 4, true),
+        bitsPerSample: view.getUint16(chunkDataOffset + 14, true),
+      };
+    }
+
+    if (chunkId === "data") {
+      dataChunkBytes = chunkSize;
+    }
+
+    offset = chunkDataOffset + chunkSize + (chunkSize % 2);
+  }
+
+  if (!fmtChunk) {
+    throw new Error("Selected WAV file is missing a fmt chunk.");
+  }
+
+  if (dataChunkBytes === 0) {
+    throw new Error("Selected WAV file does not contain audio data.");
+  }
+
+  return {
+    audioFormat: fmtChunk.audioFormat,
+    bitsPerSample: fmtChunk.bitsPerSample,
+    channels: fmtChunk.channels,
+    sampleRate: fmtChunk.sampleRate,
+  };
 }
 
 function stopDurationTimer() {
@@ -387,26 +484,35 @@ function stopRecording() {
   setUiState("processing", "Encoding WAV for upload.");
   const mergedSamples = mergeBuffers(state.chunks, totalLength);
   const wavBlob = encodeWavFromFloat32(mergedSamples, state.sampleRate, 1);
-  publishRecording(wavBlob, {
-    channels: 1,
-    sampleRate: state.sampleRate,
-  });
+  publishWavPreview(
+    wavBlob,
+    {
+      audioFormat: 1,
+      bitsPerSample: 16,
+      channels: 1,
+      sampleRate: state.sampleRate,
+    },
+    {
+      fileName: "utterance.wav",
+    },
+  );
   setUiState("ready", "Recording complete. Starting upload.");
+  appendLog(`Prepared WAV preview for upload (${wavBlob.size} bytes).`);
   appendLog(
     `Recording for ${formatDirection(state.selectedDirection)} stopped after ${durationSeconds.toFixed(2)}s at ${state.sampleRate} Hz.`,
   );
   state.activeButton = null;
-  void uploadLatestRecording();
+  void uploadPreviewWav();
 }
 
-async function uploadLatestRecording() {
+async function uploadPreviewWav() {
   if (state.isUploading) {
     return;
   }
 
   if (!state.latestBlob) {
-    setUiState("error", "Record an utterance before uploading.");
-    appendLog("Upload skipped because no WAV blob is available.");
+    setUiState("error", "Record or load a WAV before uploading.");
+    appendLog("Upload skipped because no WAV preview is available.");
     return;
   }
 
@@ -417,16 +523,18 @@ async function uploadLatestRecording() {
   }
 
   const form = new FormData();
-  form.append("file", state.latestBlob, "utterance.wav");
+  form.append("file", state.latestBlob, state.latestBlobName || "utterance.wav");
   form.append("direction", state.selectedDirection);
 
   state.isUploading = true;
+  els.diskWavInput.disabled = true;
+  els.pickWavButton.disabled = true;
   els.uploadButton.disabled = true;
   state.currentRequestId = null;
   state.lastSeenStage = null;
   setUiState("uploading", "Uploading WAV to the application server.");
   appendLog(
-    `Uploading ${state.latestBlob.size} bytes to ${targetUrl} for ${state.selectedDirection}.`,
+    `Uploading ${state.latestBlobName || "utterance.wav"} (${state.latestBlob.size} bytes) to ${targetUrl} for ${state.selectedDirection}.`,
   );
 
   try {
@@ -449,7 +557,29 @@ async function uploadLatestRecording() {
     appendLog(`Upload failed: ${error.message}`);
   } finally {
     state.isUploading = false;
+    els.diskWavInput.disabled = false;
+    els.pickWavButton.disabled = false;
     els.uploadButton.disabled = false;
+  }
+}
+
+async function handleDiskWavSelection(event) {
+  const [file] = event.target.files || [];
+
+  if (!file) {
+    return;
+  }
+
+  try {
+    const metadata = await readWavMetadata(file);
+    publishWavPreview(file, metadata, { fileName: file.name });
+    setUiState("ready", `Loaded ${file.name}. Ready to upload.`);
+    appendLog(`Loaded WAV from disk: ${file.name} (${file.size} bytes).`);
+  } catch (error) {
+    setUiState("error", error.message);
+    appendLog(`Disk WAV load failed: ${error.message}`);
+  } finally {
+    els.diskWavInput.value = "";
   }
 }
 
@@ -527,8 +657,14 @@ function bindUi() {
   els.developerModeToggle.addEventListener("change", (event) => {
     setDeveloperMode(event.target.checked);
   });
+  els.pickWavButton.addEventListener("click", () => {
+    els.diskWavInput.click();
+  });
+  els.diskWavInput.addEventListener("change", (event) => {
+    void handleDiskWavSelection(event);
+  });
   els.uploadButton.addEventListener("click", () => {
-    void uploadLatestRecording();
+    void uploadPreviewWav();
   });
   els.serverUrl.value = getDefaultServerUrl();
 }
