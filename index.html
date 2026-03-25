@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mission Phrase Recorder</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1150px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f7f9fc;
+      color: #222;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+      border: 1px solid #dbe3ee;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      color: #333;
+    }
+
+    input, select {
+      width: 100%;
+      margin-top: 5px;
+      padding: 8px 10px;
+      border: 1px solid #ccd6e0;
+      border-radius: 6px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      background: white;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      background: #eef3f8;
+    }
+
+    tr:nth-child(even) {
+      background: #fafcff;
+    }
+
+    tr.recording-row {
+      background: #fff7df !important;
+    }
+
+    button {
+      padding: 6px 10px;
+      margin: 2px;
+      cursor: pointer;
+      border: 1px solid #c9d6e5;
+      border-radius: 6px;
+      background: white;
+    }
+
+    button:hover:not(:disabled) {
+      background: #f0f6ff;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status-good {
+      color: #18794e;
+      font-weight: bold;
+    }
+
+    .status-bad {
+      color: #b42318;
+      font-weight: bold;
+    }
+
+    .small {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    audio {
+      width: 220px;
+      height: 32px;
+    }
+
+    .category-title {
+      margin-top: 24px;
+      margin-bottom: 8px;
+      color: #1f4e79;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mission Phrase Recorder</h1>
+  <div class="subtitle">Phrase-by-phrase data collection for mission, medical, and simple Gospel communication</div>
+
+  <div class="panel">
+    <strong>Recorder Metadata</strong>
+    <div class="form-grid">
+      <label>
+        Contributor ID
+        <input id="contributor" placeholder="e.g. vivian01" />
+      </label>
+
+      <label>
+        Speaker Role
+        <select id="speakerRole">
+          <option value="volunteer">Volunteer</option>
+          <option value="local_speaker">Local Speaker</option>
+          <option value="translator">Translator</option>
+          <option value="staff">Staff</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+
+      <label>
+        Native Language
+        <input id="nativeLanguage" placeholder="e.g. English, Wolof, French" />
+      </label>
+
+      <label>
+        Country / Region
+        <input id="country" placeholder="e.g. US, Senegal, Dakar" />
+      </label>
+
+      <label>
+        Collection Batch
+        <select id="collectionBatch">
+          <option value="ACO_mission_2026_Week1">ACO Mission 2026 Week1</option>
+          <option value="ACO_mission_2026_Week1">ACO Mission 2026 Week2</option>
+          <option value="ACO_Others">ACO other time</option>
+          <option value="Others">Others</option>
+        </select>
+      </label>
+
+      <label>
+        Recording Language
+        <input id="recordingLanguage" value="English" />
+      </label>
+
+      <label>
+        Sample Type
+        <input id="sampleType" value="phrase_reading" />
+      </label>
+
+      <label>
+        Scenario Tag
+        <input id="scenarioTag" value="mission_phrase_collection" />
+      </label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div><strong>Status:</strong> <span id="status">Ready</span></div>
+    <div class="small" id="currentPhrase">No phrase selected</div>
+    <div class="small" id="deviceInfo"></div>
+  </div>
+
+  <div id="app"></div>
+
+  <script>
+    const SUPABASE_URL = "https://lnbyjgqtkcynqfxdyjki.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_ud7xUBP6Ckczrbwrvlu7NQ_l-vuWTX8";
+    const BUCKET_NAME = "audio-files";
+
+    const supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY
+    );
+
+    const phraseSections = [
+      {
+        title: "Medical / 医疗 / Médical",
+        items: [
+          {id:1, en:"Where does it hurt?", fr:"Où avez-vous mal ?", zh:"哪里不舒服？"},
+          {id:2, en:"How long have you had this?", fr:"Depuis combien de temps ?", zh:"多久了？"},
+          {id:3, en:"How do you feel?", fr:"Comment vous sentez-vous ?", zh:"感觉怎么样？"},
+          {id:4, en:"Do you have a fever?", fr:"Avez-vous de la fièvre ?", zh:"发烧吗？"},
+          {id:5, en:"Please drink water.", fr:"Buvez de l’eau", zh:"喝水"},
+          {id:6, en:"Take twice a day.", fr:"Deux fois par jour", zh:"一天两次"},
+          {id:7, en:"Take medicine.", fr:"Prenez le médicament", zh:"吃药"},
+          {id:8, en:"Come back tomorrow.", fr:"Revenez demain", zh:"明天再来"},
+          {id:9, en:"Do you feel dizzy?", fr:"Vertiges ?", zh:"头晕吗"},
+          {id:10, en:"Is pain severe?", fr:"Douleur forte ?", zh:"很疼吗"}
+        ]
+      },
+      {
+        title: "Daily Communication / 日常沟通 / Communication quotidienne",
+        items: [
+          {id:11, en:"Hello, how are you?", fr:"Bonjour", zh:"你好"},
+          {id:12, en:"I am fine.", fr:"Je vais bien", zh:"我很好"},
+          {id:13, en:"What is your name?", fr:"Votre nom ?", zh:"你叫什么"},
+          {id:14, en:"My name is...", fr:"Je m’appelle...", zh:"我叫"},
+          {id:15, en:"Thank you.", fr:"Merci", zh:"谢谢"},
+          {id:16, en:"See you.", fr:"À bientôt", zh:"再见"}
+        ]
+      },
+      {
+        title: "Simple Gospel Sharing / 简单福音分享 / Partage simple de l’Évangile",
+        items: [
+          {id:17, en:"God loves you.", fr:"Dieu vous aime", zh:"神爱你"},
+          {id:18, en:"God is good.", fr:"Dieu est bon", zh:"神是好的"},
+          {id:19, en:"We will pray for you.", fr:"Nous prions pour vous", zh:"我们为你祷告"},
+          {id:20, en:"I will pray for you.", fr:"Je prie pour vous", zh:"我为你祷告"}
+        ]
+      }
+    ];
+
+    const allPhrases = phraseSections.flatMap(section => section.items);
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordings = {};
+    let stream = null;
+    let currentPhraseId = null;
+    let recordingStartedAt = null;
+
+    document.getElementById("deviceInfo").textContent = "Device: " + navigator.userAgent;
+
+    function getPhraseById(id) {
+      return allPhrases.find(p => p.id === id);
+    }
+
+    function render() {
+      let html = "";
+
+      phraseSections.forEach(section => {
+        html += `<h2 class="category-title">${section.title}</h2>`;
+        html += `
+          <table>
+            <tr>
+              <th style="width:50px;">#</th>
+              <th>English</th>
+              <th>French</th>
+              <th>Chinese</th>
+              <th style="width:320px;">Actions</th>
+            </tr>
+        `;
+
+        section.items.forEach(p => {
+          html += `
+            <tr id="row-${p.id}">
+              <td>${p.id}</td>
+              <td>${p.en}</td>
+              <td>${p.fr}</td>
+              <td>${p.zh}</td>
+              <td>
+                <button id="record-${p.id}" onclick="startRec(${p.id})">Record</button>
+                <button id="stop-${p.id}" onclick="stopRec(${p.id})" disabled>Stop</button>
+                <button id="upload-${p.id}" onclick="uploadRec(${p.id})" disabled>Upload</button>
+                <div id="audio-${p.id}" class="small">No recording yet</div>
+              </td>
+            </tr>
+          `;
+        });
+
+        html += `</table>`;
+      });
+
+      document.getElementById("app").innerHTML = html;
+    }
+
+    function resetRowStyles() {
+      document.querySelectorAll("tr").forEach(row => row.classList.remove("recording-row"));
+      document.querySelectorAll('[id^="record-"]').forEach(btn => btn.disabled = false);
+      document.querySelectorAll('[id^="stop-"]').forEach(btn => btn.disabled = true);
+    }
+
+    async function startRec(id) {
+      try {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          alert("Another recording is already in progress.");
+          return;
+        }
+
+        const phrase = getPhraseById(id);
+        document.getElementById("status").textContent = `Requesting microphone for phrase ${id}...`;
+        document.getElementById("currentPhrase").textContent = `#${id} | EN: ${phrase.en} | FR: ${phrase.fr} | 中文: ${phrase.zh}`;
+
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        let mimeType = "audio/webm";
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = "";
+        }
+
+        audioChunks = [];
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { type: mimeType }) : new MediaRecorder(stream);
+        currentPhraseId = id;
+        recordingStartedAt = Date.now();
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data && e.data.size > 0) {
+            audioChunks.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstart = () => {
+          resetRowStyles();
+          document.getElementById(`row-${id}`).classList.add("recording-row");
+          document.getElementById(`record-${id}`).disabled = true;
+          document.getElementById(`stop-${id}`).disabled = false;
+          document.getElementById("status").textContent = `Recording phrase ${id}...`;
+        };
+
+        mediaRecorder.onstop = () => {
+          const mimeTypeFinal = mediaRecorder.mimeType || "audio/webm";
+          const blob = new Blob(audioChunks, { type: mimeTypeFinal });
+          const url = URL.createObjectURL(blob);
+          const durationSec = recordingStartedAt ? ((Date.now() - recordingStartedAt) / 1000).toFixed(2) : null;
+
+          recordings[id] = {
+            blob,
+            url,
+            mimeType: mimeTypeFinal,
+            durationSec
+          };
+
+          document.getElementById(`audio-${id}`).innerHTML = `
+            <audio controls src="${url}"></audio>
+            <div class="small">Saved locally | ${Math.round(blob.size / 1024)} KB | ${durationSec} sec</div>
+          `;
+
+          document.getElementById(`upload-${id}`).disabled = false;
+          document.getElementById("status").textContent = `Recorded phrase ${id}`;
+
+          if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+          }
+
+          stream = null;
+          mediaRecorder = null;
+          audioChunks = [];
+          currentPhraseId = null;
+          recordingStartedAt = null;
+          resetRowStyles();
+        };
+
+        mediaRecorder.start();
+      } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerHTML = `<span class="status-bad">Could not access microphone</span>`;
+      }
+    }
+
+    function stopRec(id) {
+      if (!mediaRecorder || mediaRecorder.state !== "recording") {
+        document.getElementById("status").textContent = "No active recording";
+        return;
+      }
+
+      if (currentPhraseId !== id) {
+        document.getElementById("status").textContent = `Phrase ${currentPhraseId} is being recorded`;
+        return;
+      }
+
+      document.getElementById("status").textContent = `Stopping phrase ${id}...`;
+      mediaRecorder.stop();
+    }
+
+    async function uploadRec(id) {
+      try {
+        const rec = recordings[id];
+        if (!rec) {
+          alert("No recording found for this phrase.");
+          return;
+        }
+
+        const contributor = document.getElementById("contributor").value.trim() || "test_user";
+        const speakerRole = document.getElementById("speakerRole").value.trim();
+        const nativeLanguage = document.getElementById("nativeLanguage").value.trim() || null;
+        const country = document.getElementById("country").value.trim() || null;
+        const collectionBatch = document.getElementById("collectionBatch").value.trim() || null;
+        const recordingLanguage = document.getElementById("recordingLanguage").value.trim() || "English";
+        const sampleType = document.getElementById("sampleType").value.trim() || "phrase_reading";
+        const scenarioTag = document.getElementById("scenarioTag").value.trim() || "mission_phrase_collection";
+
+        const phrase = getPhraseById(id);
+        const ext = rec.mimeType.includes("webm") ? "webm" : "bin";
+        const fileName = `${contributor}/phrase_${String(id).padStart(2, "0")}_${Date.now()}.${ext}`;
+
+        document.getElementById("status").textContent = `Uploading phrase ${id}...`;
+
+        const { error: uploadError } = await supabaseClient
+          .storage
+          .from(BUCKET_NAME)
+          .upload(fileName, rec.blob, {
+            contentType: rec.mimeType,
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error(uploadError);
+          document.getElementById("status").innerHTML = `<span class="status-bad">Upload failed</span>`;
+          alert(uploadError.message);
+          return;
+        }
+
+        const { data: publicData } = supabaseClient
+          .storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(fileName);
+
+        const payload = {
+          phrase_id: id,
+          audio_url: publicData.publicUrl,
+          prompt_text: phrase.en,
+          contributor_id: contributor,
+          sample_type: sampleType,
+          language: recordingLanguage,
+          native_language: nativeLanguage,
+          speaker_role: speakerRole,
+          country: country,
+          audio_duration_sec: rec.durationSec ? Number(rec.durationSec) : null,
+          collection_batch: collectionBatch,
+          device_info: navigator.userAgent,
+          scenario_tag: scenarioTag
+        };
+
+        const { error: dbError } = await supabaseClient
+          .from("samples")
+          .insert([payload]);
+
+        if (dbError) {
+          console.error(dbError);
+          document.getElementById("status").innerHTML = `<span class="status-bad">DB insert failed</span>`;
+          alert(dbError.message);
+          return;
+        }
+
+        document.getElementById(`upload-${id}`).disabled = true;
+        document.getElementById(`audio-${id}`).innerHTML += `<div class="small status-good">Uploaded to Supabase</div>`;
+        document.getElementById("status").innerHTML = `<span class="status-good">Uploaded phrase ${id} successfully</span>`;
+      } catch (err) {
+        console.error(err);
+        document.getElementById("status").innerHTML = `<span class="status-bad">Unexpected error</span>`;
+        alert(err.message);
+      }
+    }
+
+    render();
+    window.startRec = startRec;
+    window.stopRec = stopRec;
+    window.uploadRec = uploadRec;
+  </script>
+</body>
+</html>
