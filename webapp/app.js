@@ -28,7 +28,6 @@ const els = {
   statusBadge: document.querySelector("#statusBadge"),
   statusText: document.querySelector("#statusText"),
   permissionValue: document.querySelector("#permissionValue"),
-  stateValue: document.querySelector("#stateValue"),
   durationValue: document.querySelector("#durationValue"),
   sampleRateValue: document.querySelector("#sampleRateValue"),
   directionValue: document.querySelector("#directionValue"),
@@ -67,7 +66,6 @@ function formatDirection(direction) {
 
 function setUiState(nextState, detail) {
   state.uiState = nextState;
-  els.stateValue.textContent = nextState;
 
   const badge = els.statusBadge;
   badge.className = "badge";

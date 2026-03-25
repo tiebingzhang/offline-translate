@@ -1,123 +1,145 @@
 # Wolof Translate
 
-`wolof-translate` is a push-to-talk desktop interpreter for spoken **Wolof <-> English** conversations.  Eventually we may add support to the following languages:
+`wolof-translate` is a local browser-based prototype for spoken **English <-> Wolof** translation.
 
-- French <-> English
+Current pipeline:
 
-The planned application will use:
+- `english_to_wolof`: browser audio -> `whisper.cpp` -> Wolof text -> local Wolof TTS server -> Wolof audio
+- `wolof_to_english`: browser audio -> `whisper.cpp` -> Wolof text -> local translation server -> English text -> macOS `say`
 
-- **Electron** for the desktop shell
-- An embedded **web UI** inside Electron to show recording, transcription, translation, generation, and playback progress
-- **Python** for orchestration and model / API integration
-- **whisper.cpp** and Whisper-based models for speech-to-text
-- Text-to-speech APIs and local TTS models for audio output
+The UI is served from `web_server.py` and lives in `webapp/`.
 
-## Goal
+## Requirements
 
-The goal is to make it possible for two people to take turns speaking, with the system:
+- Python `3.12+`
+- `pip`
+- A separate `whisper.cpp` checkout with the HTTP server binary built
+- Two GGUF Whisper models:
+  - `whisper-medium-english-2-wolof.gguf`
+  - `whisper-small-wolof.gguf`
+- Audio playback:
+  - macOS: built-in `say` is used for English playback and `afplay` can be used for WAV playback
+  - Linux/non-macOS: install `ffplay` and start the web server with `--english-no-play`
 
-1. Capturing audio from one speaker
-2. Transcribing the speech
-3. Translating it into the target language
-4. Generating output audio
-5. Playing the translated audio back before the next speaker talks
+## Installation
 
-This is a **single-speaker-at-a-time** workflow, not a simultaneous interpreter. The interaction model is closer to a walkie-talkie or push-to-talk experience: one person speaks, the machine processes, the translated audio plays, then the other person responds.
+### 1. Create a virtual environment
 
-## Planned User Experience
-
-- The user presses and holds a button to talk
-- The app records the active speaker
-- The app shows progress in the embedded web UI
-- The backend transcribes, translates, and synthesizes speech
-- The translated audio is played back to the listener
-- The next speaker can then respond
-
-The UI should clearly indicate which stage is in progress:
-
-- Capturing audio
-- Transcribing
-- Translating
-- Generating audio
-- Playing audio
-
-## Translation Flows
-
-### Wolof -> English
-
-```text
-audio -> whisper-medium -> English text -> English TTS API -> English audio
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install .
 ```
 
-Current assumption:
+This installs the Python dependencies declared in `pyproject.toml`:
 
-- A fine-tuned Whisper-based model can transcribe Wolof speech and produce English text
-- English speech output can be produced with a standard English TTS API
+- `numpy`
+- `soxr`
+- `torch`
+- `transformers`
 
-### English -> Wolof
+The first time you start the Python services, Hugging Face model weights may be downloaded and cached locally. That can take a while.
 
-```text
-audio -> Whisper -> English text -> NLLB translation -> Wolof text -> SpeechT5 Wolof TTS -> Wolof audio
+### 2. Prepare `whisper.cpp`
+
+This repository does not vendor `whisper.cpp`. Build it separately, then point the run commands below at the server binary from that checkout.
+
+Recent `whisper.cpp` builds often expose the server as:
+
+```bash
+~/code/whisper.cpp/build/bin/server
 ```
 
-Current assumption:
+Older/local setups may use:
 
-- A Whisper-based model is used to transcribe English speech
-- Translation from English text to Wolof text is handled with an NLLB-style model
-- Wolof speech output is generated with a Wolof-capable TTS model such as SpeechT5
-
-## Model Notes
-
-The current research direction is based on these components:
-
-- A fine-tuned Whisper-based model for **English -> Wolof** [https://huggingface.co/bilalfaye/whisper-medium-english-2-wolof]
-- Another model for **Wolof -> English** [https://huggingface.co/bilalfaye/whisper-medium-wolof-2-english]
-- A Wolof audio generation model for Wolof TTS [https://huggingface.co/bilalfaye/speecht5_tts-wolof-v0.2]
-- A standard English TTS system for English output audio
-- Facebook mode `seamless-m4t-v2` was considered, but because Wolof is not supported, we are not using that model as of now.
-
-These model choices are still subject to validation based on latency, quality, and packaging constraints for a desktop app.
-
-## High-Level Architecture
-
-### Frontend
-
-- Electron application shell
-- Embedded web UI for controls and progress display
-- Push-to-talk interaction and status updates
-
-### Backend
-
-- Python service layer for orchestration
-- Audio capture and handoff
-- whisper.cpp / Whisper model inference
-- Translation model integration
-- TTS generation
-- Audio playback
-
-## Processing Pipeline
-
-```text
-capture audio
--> transcribe
--> translate
--> generate output audio
--> playback
+```bash
+~/code/whisper.cpp/whisper-server
 ```
 
-The system is intentionally turn-based so the translation pipeline has time to complete before the next utterance begins.
+The examples below use an environment variable so you can swap in whichever binary your checkout produced.
 
-## Project Status
+## Run It
 
-This repository is currently an early prototype / research workspace. The main focus is validating:
+Start each service in its own terminal from the repository root.
 
-- Wolof speech recognition quality
-- English <-> Wolof translation quality
-- Wolof TTS quality
-- End-to-end latency for a push-to-talk desktop workflow
+### 1. Start the English -> Wolof `whisper.cpp` server
 
-## Open Questions
+```bash
+export WHISPER_SERVER=~/code/whisper.cpp/build/bin/server
 
-- Which Whisper or whisper.cpp-compatible models give the best latency / accuracy tradeoff for local use?
-- Which English TTS provider is the best fit for quality, speed, and packaging
-- How to package Python + Electron + local models cleanly for distribution
+$WHISPER_SERVER \
+  --port 8080 \
+  -m /absolute/path/to/whisper-medium-english-2-wolof.gguf
+```
+
+If your checkout uses `whisper-server` instead of `build/bin/server`, set `WHISPER_SERVER` accordingly.
+
+### 2. Start the Wolof -> English `whisper.cpp` server
+
+```bash
+$WHISPER_SERVER \
+  --port 8081 \
+  -m /absolute/path/to/whisper-small-wolof.gguf
+```
+
+### 3. Start the Wolof speech server
+
+```bash
+source .venv/bin/activate
+python wolof_speech_server.py --port 8001
+```
+
+This server loads the Wolof SpeechT5 model and writes generated WAV files under `generated_audio/`.
+
+### 4. Start the Wolof -> English translation server
+
+```bash
+source .venv/bin/activate
+python wolof_to_english_translate_server.py --port 8002
+```
+
+### 5. Start the web app server
+
+```bash
+source .venv/bin/activate
+python web_server.py --port 8090
+```
+
+On non-macOS systems, disable English playback:
+
+```bash
+python web_server.py --port 8090 --english-no-play
+```
+
+### 6. Open the UI
+
+Open:
+
+```text
+http://127.0.0.1:8090
+```
+
+Then:
+
+1. Press and hold `English -> Wolof` or `Wolof -> English`
+2. Speak
+3. Release to upload the WAV recording
+4. Wait for the job stages to complete in the UI
+
+The browser client records audio and uploads it as `utterance.wav`, so you do not need to prepare WAV files manually for normal use.
+
+## Useful Endpoints
+
+- Web app health: `http://127.0.0.1:8090/health`
+- Wolof speech server health: `http://127.0.0.1:8001/health`
+- Wolof -> English translation server health: `http://127.0.0.1:8002/health`
+
+## Notes
+
+- `speaker_embeddings/default.npy` is already included in the repo and is used by the Wolof TTS server by default.
+- `web_server.py` expects the `whisper.cpp` inference endpoints at:
+  - `http://127.0.0.1:8080/inference`
+  - `http://127.0.0.1:8081/inference`
+- If you want faster server startup, both Python model servers support `--lazy` to defer model loading until the first request.
+- `start-all.sh` shows the expected port layout, but it hardcodes local paths and is not a general-purpose launcher as-is.
