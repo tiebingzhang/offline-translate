@@ -8,14 +8,12 @@
   </head>
   <body>
     <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Wolof Translate</p>
-        <h1>Push to talk. Capture one utterance. Prepare it for the speech pipeline.</h1>
-        <p class="lede">
-          This browser-first prototype records a single turn, exports it as a WAV file,
-          and exposes the exact blob and metadata that the application server will
-          upload to <code>whisper.cpp</code> in the next task.
-        </p>
+      <section class="app-bar">
+        <label class="toggle">
+          <input id="developerModeToggle" type="checkbox" />
+          <span class="toggle-track" aria-hidden="true"></span>
+          <span class="toggle-label">Developer mode</span>
+        </label>
       </section>
 
       <section class="panel panel-recorder">
@@ -32,7 +30,6 @@
             aria-live="polite"
           >
             <span class="talk-label">English -> Wolof</span>
-            <span class="talk-subtitle">Hold to speak English</span>
           </button>
           <button
             class="talk-button talk-button-secondary"
@@ -41,7 +38,6 @@
             aria-live="polite"
           >
             <span class="talk-label">Wolof -> English</span>
-            <span class="talk-subtitle">Hold to speak Wolof</span>
           </button>
         </div>
 
@@ -68,17 +64,9 @@
           </div>
         </div>
 
-        <div class="hint-block">
-          <p>Controls</p>
-          <ul>
-            <li>Press and hold either button with the mouse or touch.</li>
-            <li>Each button sets the input language direction for that utterance.</li>
-            <li>Serve this page over <code>http://localhost</code> to use microphone access.</li>
-          </ul>
-        </div>
       </section>
 
-      <section class="panel panel-output">
+      <section class="panel panel-output" data-developer-panel hidden>
         <div class="panel-header">
           <div>
             <p class="eyebrow">Latest Recording</p>
@@ -121,7 +109,7 @@
         <pre id="serverResponse" class="response-box">No upload attempted yet.</pre>
       </section>
 
-      <section class="panel panel-log">
+      <section class="panel panel-log" data-developer-panel hidden>
         <div class="panel-header">
           <div>
             <p class="eyebrow">Recorder Log</p>

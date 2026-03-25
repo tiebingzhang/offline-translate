@@ -17,10 +17,13 @@ const state = {
   lastSeenStage: null,
   selectedDirection: "english_to_wolof",
   activeButton: null,
+  developerMode: false,
 };
 
 const els = {
   talkButtons: Array.from(document.querySelectorAll("[data-direction]")),
+  developerModeToggle: document.querySelector("#developerModeToggle"),
+  developerPanels: Array.from(document.querySelectorAll("[data-developer-panel]")),
   statusBadge: document.querySelector("#statusBadge"),
   statusText: document.querySelector("#statusText"),
   permissionValue: document.querySelector("#permissionValue"),
@@ -40,6 +43,14 @@ const els = {
   eventLog: document.querySelector("#eventLog"),
   clearLog: document.querySelector("#clearLog"),
 };
+
+function setDeveloperMode(enabled) {
+  state.developerMode = enabled;
+  els.developerModeToggle.checked = enabled;
+  for (const panel of els.developerPanels) {
+    panel.hidden = !enabled;
+  }
+}
 
 function formatDirection(direction) {
   if (direction === "english_to_wolof") {
@@ -513,6 +524,9 @@ function bindUi() {
     els.eventLog.replaceChildren();
     appendLog("Event log cleared.");
   });
+  els.developerModeToggle.addEventListener("change", (event) => {
+    setDeveloperMode(event.target.checked);
+  });
   els.uploadButton.addEventListener("click", () => {
     void uploadLatestRecording();
   });
@@ -522,6 +536,7 @@ function bindUi() {
 async function init() {
   setUiState("idle", "Ready to request microphone access.");
   setSelectedDirection(state.selectedDirection);
+  setDeveloperMode(false);
   bindUi();
   attachPushToTalkHandlers();
   await hydratePermissions();
