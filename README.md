@@ -9,6 +9,10 @@ Current pipeline:
 
 The UI is served from `web_server.py` and lives in `webapp/`.
 
+## Screenshot
+
+![Wolof Translate UI](screenshots/wolof-translate-screenshot.png)
+
 ## Requirements
 
 - Python `3.12+`
