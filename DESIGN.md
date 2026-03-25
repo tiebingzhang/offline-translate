@@ -35,7 +35,8 @@ Current direction:
 Planned additional direction:
 
 - **Wolof -> English**
-  - input ASR/translation: `whisper.cpp` server on `localhost:8081`
+  - input ASR/transcription: `whisper.cpp` server on `localhost:8081`
+  - text translation: separate Wolof-to-English translation HTTP service based on [translate.py](/Users/tzhang/code/wolof-translate/translate.py)
   - output speech: macOS `say`
 
 ## Product Direction
@@ -87,6 +88,7 @@ Responsibilities:
 - route the request by input language / direction
 - forward audio to the correct local `whisper.cpp` server
 - receive Wolof or English text
+- call the Wolof-to-English translation service when the Wolof-input path needs English text
 - forward Wolof text to the Wolof speech service
 - invoke macOS `say` for English output
 - return structured status and output metadata to the frontend
@@ -104,7 +106,7 @@ Responsibilities:
 There are now two local `whisper.cpp` dependencies:
 
 - `localhost:8080` for **English -> Wolof**
-- `localhost:8081` for **Wolof -> English**
+- `localhost:8081` for **Wolof -> English transcription**
 
 ### Wolof Speech Server
 
@@ -127,6 +129,16 @@ Responsibilities:
 - speak it with the macOS `say` command
 
 The local `say` interface supports direct playback of text and optional file output, but the current plan is to use it for **direct playback only**.
+
+### Wolof-To-English Translation Service
+
+Responsibilities:
+
+- accept Wolof text transcription
+- translate Wolof text into English using the existing NLLB model logic from [translate.py](/Users/tzhang/code/wolof-translate/translate.py)
+- return English text to the application server over HTTP
+
+This service should be a separate local HTTP dependency so the application server remains an orchestrator rather than owning all model inference directly.
 
 ## Request Flows
 
@@ -151,6 +163,8 @@ browser microphone
 -> browser encodes WAV
 -> web app server
 -> whisper.cpp server :8081
+-> Wolof text
+-> Wolof-to-English translation service
 -> English text
 -> macOS say
 -> spoken English playback
@@ -242,6 +256,29 @@ Integration implication:
 - temperature and response-format options should be configurable in the application server
 - the application server should choose port `8080` or `8081` based on the requested direction
 
+### Application Server -> Wolof-To-English Translation Service
+
+Suggested endpoint:
+
+- `POST /translate`
+
+Suggested JSON body:
+
+```json
+{
+  "text": "wolof text here"
+}
+```
+
+Suggested response:
+
+```json
+{
+  "source_text": "wolof text here",
+  "translated_text": "english text here"
+}
+```
+
 ### Application Server -> Wolof Speech Server
 
 Suggested endpoint:
@@ -305,7 +342,7 @@ Web UI displays progress clearly for each stage.
 
 ### Milestone 5
 
-Add Wolof-input routing and English speech playback.
+Add Wolof-input routing, Wolof-to-English translation, and English speech playback.
 
 ### Milestone 6
 

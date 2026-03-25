@@ -166,6 +166,9 @@ function updateUiFromJob(job) {
     case "transcribing":
       setUiState("transcribing", job.stage_detail || "Calling whisper.cpp.");
       break;
+    case "translating":
+      setUiState("translating", job.stage_detail || "Translating text.");
+      break;
     case "generating_speech":
       setUiState("generating_speech", job.stage_detail || "Generating speech.");
       break;

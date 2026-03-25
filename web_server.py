@@ -49,6 +49,12 @@ class SayConfig:
     rate: int | None
 
 
+@dataclass(frozen=True)
+class TranslationServiceConfig:
+    url: str
+    request_timeout_seconds: int
+
+
 class JobStore:
     def __init__(self):
         self._jobs = {}
@@ -245,6 +251,33 @@ def call_speech_server(text, speech_config):
         raise RuntimeError(f"Wolof speech server request failed: {exc.reason}") from exc
 
 
+def call_wolof_to_english_translation_service(text, translation_config):
+    payload = json.dumps({"text": text}).encode("utf-8")
+    req = request.Request(
+        translation_config.url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=translation_config.request_timeout_seconds) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Wolof-to-English translation server returned HTTP {exc.code}: {body_text}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"Wolof-to-English translation server request failed: {exc.reason}") from exc
+
+    translated_text = str(result.get("translated_text", "")).strip()
+    if not translated_text:
+        raise RuntimeError("Translation server response did not include non-empty 'translated_text'.")
+
+    return result
+
+
 def speak_english_with_say(text, say_config):
     if not say_config.play:
         return {
@@ -353,7 +386,15 @@ def serialize_job_for_response(job):
     return payload
 
 
-def process_request_job(request_id, upload, whisper_configs, speech_config, say_config, job_store):
+def process_request_job(
+    request_id,
+    upload,
+    whisper_configs,
+    speech_config,
+    say_config,
+    translation_service_config,
+    job_store,
+):
     stage = "queued"
     direction = upload["direction"]
     whisper_config = whisper_configs[direction]
@@ -399,6 +440,9 @@ def process_request_job(request_id, upload, whisper_configs, speech_config, say_
         record_stage_timing(job_store, request_id, stage, started_at_ms)
 
         speech_result = None
+        translation_result = None
+        translated_text = whisper_result["text"]
+        transcribed_text = whisper_result["text"]
         output_mode = "text_only"
         if direction == "english_to_wolof":
             stage = "generating_speech"
@@ -412,6 +456,20 @@ def process_request_job(request_id, upload, whisper_configs, speech_config, say_
             record_stage_timing(job_store, request_id, stage, started_at_ms)
             output_mode = "wolof_audio"
         elif direction == "wolof_to_english":
+            stage = "translating"
+            started_at_ms = update_job_stage(
+                job_store,
+                request_id,
+                stage,
+                "Translating Wolof text to English.",
+            )
+            translation_result = call_wolof_to_english_translation_service(
+                whisper_result["text"],
+                translation_service_config,
+            )
+            translated_text = translation_result["translated_text"]
+            record_stage_timing(job_store, request_id, stage, started_at_ms)
+
             stage = "generating_speech"
             started_at_ms = update_job_stage(
                 job_store,
@@ -419,7 +477,7 @@ def process_request_job(request_id, upload, whisper_configs, speech_config, say_
                 stage,
                 "Speaking English with macOS say.",
             )
-            speech_result = speak_english_with_say(whisper_result["text"], say_config)
+            speech_result = speak_english_with_say(translated_text, say_config)
             record_stage_timing(job_store, request_id, stage, started_at_ms)
             output_mode = "english_audio"
 
@@ -429,8 +487,10 @@ def process_request_job(request_id, upload, whisper_configs, speech_config, say_
             {
                 "direction": direction,
                 "target_language": get_target_language(direction),
-                "translated_text": whisper_result["text"],
+                "transcribed_text": transcribed_text,
+                "translated_text": translated_text,
                 "whisper_response": whisper_result["raw_response"],
+                "translation_result": translation_result,
                 "output_mode": output_mode,
                 "speech_result": speech_result,
             },
@@ -562,6 +622,7 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
                 self.server.whisper_configs,
                 self.server.speech_config,
                 self.server.say_config,
+                self.server.translation_service_config,
                 self.server.job_store,
             ),
             daemon=True,
@@ -638,7 +699,15 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
 
-def serve(host="127.0.0.1", port=8090, whisper_configs=None, speech_config=None, say_config=None, verbose=False):
+def serve(
+    host="127.0.0.1",
+    port=8090,
+    whisper_configs=None,
+    speech_config=None,
+    say_config=None,
+    translation_service_config=None,
+    verbose=False,
+):
     configure_logging(verbose=verbose)
     server = ThreadingHTTPServer((host, port), WebAppRequestHandler)
     server.whisper_configs = whisper_configs or {
@@ -668,6 +737,10 @@ def serve(host="127.0.0.1", port=8090, whisper_configs=None, speech_config=None,
         play=True,
         voice=None,
         rate=None,
+    )
+    server.translation_service_config = translation_service_config or TranslationServiceConfig(
+        url="http://127.0.0.1:8002/translate",
+        request_timeout_seconds=120,
     )
     server.job_store = JobStore()
     LOGGER.info("Web app server listening on http://%s:%s", host, port)
@@ -754,6 +827,17 @@ def main():
         help="Optional macOS say speaking rate in words per minute.",
     )
     parser.add_argument(
+        "--wolof-translate-server-url",
+        default="http://127.0.0.1:8002/translate",
+        help="Wolof-to-English translation service endpoint.",
+    )
+    parser.add_argument(
+        "--wolof-translate-timeout-seconds",
+        type=int,
+        default=120,
+        help="Timeout when waiting for the Wolof-to-English translation service.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable debug logging.",
@@ -789,6 +873,10 @@ def main():
             play=not args.english_no_play,
             voice=args.english_say_voice,
             rate=args.english_say_rate,
+        ),
+        translation_service_config=TranslationServiceConfig(
+            url=args.wolof_translate_server_url,
+            request_timeout_seconds=args.wolof_translate_timeout_seconds,
         ),
         verbose=args.verbose,
     )
