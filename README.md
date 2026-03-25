@@ -15,8 +15,8 @@ The UI is served from `web_server.py` and lives in `webapp/`.
 - `pip` (or uv)
 - A separate `whisper.cpp` checkout with the HTTP server binary built
 - Two GGUF Whisper models:
-  - `whisper-medium-english-2-wolof.gguf`
-  - `whisper-small-wolof.gguf`
+  - `whisper-medium-english-2-wolof.gguf`: https://huggingface.co/Tiebing/whisper-medium-english-2-wolof
+  - `whisper-small-wolof.gguf`: https://huggingface.co/Tiebing/whisper-small-wolof
 - Audio playback:
   - macOS: built-in `say` is used for English playback
 
@@ -39,6 +39,11 @@ This installs the Python dependencies declared in `pyproject.toml`:
 - `transformers`
 
 The first time you start the Python services, Hugging Face model weights may be downloaded and cached locally. That can take a while.
+
+Download the two GGUF files for `whisper.cpp` from:
+
+- https://huggingface.co/Tiebing/whisper-medium-english-2-wolof
+- https://huggingface.co/Tiebing/whisper-small-wolof
 
 ### 2. Prepare `whisper.cpp`
 
