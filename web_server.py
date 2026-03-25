@@ -2,15 +2,16 @@
 import argparse
 import copy
 import email.policy
+import io
 import json
 import logging
 import mimetypes
 import shutil
 import subprocess
-import tempfile
 import threading
 import time
 import uuid
+import wave
 from dataclasses import dataclass
 from email.parser import BytesParser
 from http import HTTPStatus
@@ -18,10 +19,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import error, parse, request
 
+import numpy as np
+import soxr
+
 WEB_ROOT = Path(__file__).parent / "webapp"
 LOGGER = logging.getLogger("wolof_translate.web_server")
 DEFAULT_DIRECTION = "english_to_wolof"
 SUPPORTED_DIRECTIONS = frozenset({"english_to_wolof", "wolof_to_english"})
+WHISPER_SAMPLE_RATE = 16000
 
 
 @dataclass(frozen=True)
@@ -141,45 +146,77 @@ def build_multipart_form_data(fields, files):
     return boundary, bytes(body)
 
 
-def normalize_audio_for_whisper(audio_bytes, input_filename):
-    ffmpeg_path = shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise RuntimeError("ffmpeg is required to normalize audio for whisper.cpp.")
-
-    input_suffix = Path(input_filename).suffix or ".wav"
-    with tempfile.NamedTemporaryFile(suffix=input_suffix, delete=False) as input_file:
-        input_path = Path(input_file.name)
-        input_file.write(audio_bytes)
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
-        output_path = Path(output_file.name)
-
-    try:
-        subprocess.run(
-            [
-                ffmpeg_path,
-                "-y",
-                "-i",
-                str(input_path),
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-c:a",
-                "pcm_s16le",
-                str(output_path),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+def _decode_pcm_samples(raw_frames, sample_width):
+    if sample_width == 1:
+        samples = np.frombuffer(raw_frames, dtype=np.uint8).astype(np.float32)
+        return (samples - 128.0) / 128.0
+    if sample_width == 2:
+        return np.frombuffer(raw_frames, dtype="<i2").astype(np.float32) / 32768.0
+    if sample_width == 3:
+        packed = np.frombuffer(raw_frames, dtype=np.uint8).reshape(-1, 3)
+        samples = (
+            packed[:, 0].astype(np.int32)
+            | (packed[:, 1].astype(np.int32) << 8)
+            | (packed[:, 2].astype(np.int32) << 16)
         )
-        return output_path.read_bytes()
-    except subprocess.CalledProcessError as exc:
-        stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"ffmpeg normalization failed: {stderr_text}") from exc
-    finally:
-        input_path.unlink(missing_ok=True)
-        output_path.unlink(missing_ok=True)
+        samples = (samples << 8) >> 8
+        return samples.astype(np.float32) / 8388608.0
+    if sample_width == 4:
+        return np.frombuffer(raw_frames, dtype="<i4").astype(np.float32) / 2147483648.0
+    raise RuntimeError(f"Unsupported WAV sample width: {sample_width * 8} bits.")
+
+
+def _read_wav_samples(audio_bytes, input_filename):
+    try:
+        with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
+            channel_count = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            sample_rate = wav_file.getframerate()
+            compression_type = wav_file.getcomptype()
+            frame_count = wav_file.getnframes()
+            raw_frames = wav_file.readframes(frame_count)
+    except wave.Error as exc:
+        raise RuntimeError(f"Unsupported WAV file {input_filename!r}: {exc}") from exc
+
+    if compression_type != "NONE":
+        raise RuntimeError(f"WAV file {input_filename!r} must use PCM encoding.")
+    if channel_count < 1:
+        raise RuntimeError(f"WAV file {input_filename!r} must include at least one channel.")
+    if sample_rate < 1:
+        raise RuntimeError(f"WAV file {input_filename!r} has an invalid sample rate: {sample_rate}.")
+    if not raw_frames:
+        raise RuntimeError(f"WAV file {input_filename!r} does not contain audio frames.")
+
+    samples = _decode_pcm_samples(raw_frames, sample_width)
+    return samples.reshape(-1, channel_count), sample_rate
+
+
+def _encode_pcm16_wav(samples, sample_rate):
+    clipped = np.clip(samples, -1.0, 1.0 - (1.0 / 32768.0))
+    pcm16 = np.round(clipped * 32768.0).astype("<i2")
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm16.tobytes())
+    return buffer.getvalue()
+
+
+def normalize_audio_for_whisper(audio_bytes, input_filename):
+    if sniff_audio_format(audio_bytes) != "wav":
+        raise RuntimeError(f"Audio upload {input_filename!r} must be a WAV file.")
+
+    samples, sample_rate = _read_wav_samples(audio_bytes, input_filename)
+
+    # Downmix before resampling so the resampler only processes one stream.
+    mono_samples = samples.mean(axis=1, dtype=np.float32) if samples.shape[1] > 1 else samples[:, 0]
+    normalized_samples = (
+        soxr.resample(mono_samples, sample_rate, WHISPER_SAMPLE_RATE, quality="HQ")
+        if sample_rate != WHISPER_SAMPLE_RATE
+        else mono_samples
+    )
+    return _encode_pcm16_wav(np.asarray(normalized_samples, dtype=np.float32), WHISPER_SAMPLE_RATE)
 
 
 def call_whisper_server(audio_bytes, whisper_config):
