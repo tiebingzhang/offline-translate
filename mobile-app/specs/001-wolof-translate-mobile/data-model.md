@@ -111,17 +111,22 @@ interface HistoryEntry {
   direction: Direction;
   transcribedText: string;
   translatedText: string;
-  audioPath: string;            // relative to Paths.document/audio/ (e.g., "a1b2c3d4.m4a")
-  audioByteSize: number;        // used for the 50 MB cap check
+  // Relative to Paths.document/audio/ (e.g., "a1b2c3d4.m4a") for audio-backed
+  // entries. EMPTY STRING for TTS-only entries (FR-004 wolof_to_english) where
+  // replay is produced on-device by expo-speech; no file is stored on disk.
+  // See Phase 4 Remediation T075c.
+  audioPath: string;
+  audioByteSize: number;        // 0 when audioPath is empty; otherwise used for the 50 MB cap check
   createdAtMs: number;          // epoch ms (completedAtMs from the source result)
 }
 ```
 
 **Invariants**:
-- `audioPath` MUST point to a file that exists on disk when the row is queried. A row whose file is missing is treated as corrupt and pruned.
-- `COUNT(*) ≤ 20` after every insert (trim oldest on overflow; FR-012).
-- `SUM(audioByteSize) ≤ 50 * 1024 * 1024` after every insert (trim oldest on overflow; FR-012).
-- Delete (FR-013c) is transactional: remove the SQLite row AND unlink the audio file in the same user action.
+- When `audioPath` is non-empty, it MUST point to a file that exists on disk when the row is queried. A row whose file is missing is treated as corrupt and pruned. TTS-only entries (`audioPath === ''`) are exempt from the disk check.
+- `COUNT(*) ≤ 20` after every insert (trim oldest on overflow; FR-012). Enforced inside a single `withTransactionAsync` block together with the INSERT.
+- `SUM(audioByteSize) ≤ 50 * 1024 * 1024` after every insert (trim oldest on overflow; FR-012). Same transaction as above.
+- Re-inserting a row with a duplicate `request_id` MUST unlink the prior `audioPath` before overwriting (avoids orphaned audio files). Prior-row lookup runs inside the insert transaction.
+- Delete (FR-013c) is transactional: remove the SQLite row AND (when `audioPath` is non-empty) unlink the audio file in the same user action.
 
 ### 1.4 `UserSettings` (persisted via AsyncStorage; user-visible)
 

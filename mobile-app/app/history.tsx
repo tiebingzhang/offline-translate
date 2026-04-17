@@ -11,15 +11,24 @@ import { paletteForScheme, spacing } from '@/design/tokens';
 import { log } from '@/utils/logger';
 
 function entryToPlayableResult(entry: HistoryEntry) {
+  // TTS-only entries (empty audioPath) replay through expo-speech; audio-backed
+  // entries play the cached file offline (001-wolof-translate-mobile:T075c)
+  const isTtsOnly = !entry.audioPath;
+  const targetLanguage =
+    entry.direction === 'english_to_wolof' ? ('wolof' as const) : ('english' as const);
   return {
     requestId: entry.requestId,
     direction: entry.direction,
-    targetLanguage: entry.direction === 'english_to_wolof' ? ('wolof' as const) : ('english' as const),
+    targetLanguage,
     transcribedText: entry.transcribedText,
     translatedText: entry.translatedText,
-    outputMode: 'wolof_audio' as const,
+    outputMode: isTtsOnly
+      ? ('text_only' as const)
+      : entry.direction === 'english_to_wolof'
+        ? ('wolof_audio' as const)
+        : ('english_audio' as const),
     audioUrl: null,
-    localAudioUri: `${AUDIO_DIR_URI}${entry.audioPath}`,
+    localAudioUri: isTtsOnly ? null : `${AUDIO_DIR_URI}${entry.audioPath}`,
     completedAtMs: entry.createdAtMs,
   };
 }

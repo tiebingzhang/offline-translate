@@ -181,6 +181,17 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T074 [P] [US2] Create `mobile-app/maestro/flows/us2-offline-history.yaml` — complete one translation → toggle airplane mode → open History → tap replay → assert playback active; swipe row → tap Delete → assert row removed
 - [X] T075 [Commit] `001-wolof-translate-mobile:Phase4-US2: offline history cache`
 
+### Phase 4 Remediation (post-review alignment; 2026-04-17)
+
+Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio path was a literal placeholder (not the real Documents directory), insert + eviction was not wrapped in a single SQL transaction (T069 language), `wolof_to_english` TTS-only results were silently not persisted (FR-010/FR-011), the completion wiring in `pipeline-store.ts` lacked unit coverage (Constitution II), and `HistoryRow` imported `Direction` from a sibling component instead of the domain module.
+
+- [X] T075a [US2] In `src/cache/history-repo.ts` (and `src/api/bff-client.ts`) derive the audio directory from `documentDirectory` (`expo-file-system/legacy`) instead of the literal `file:///document/audio/`; add an idempotent `makeDirectoryAsync({ intermediates: true })` call before filesystem IO (FR-013 offline replay requires a real on-device path)
+- [X] T075b [US2] Wrap INSERT + overflow eviction in `db.withTransactionAsync(...)` so `COUNT(*) ≤ 20` and `SUM(audio_byte_size) ≤ 50 MB` hold across crashes (T069 literal ask; `data-model.md` §1.3 invariants). File unlinks run AFTER commit. Also unlink the prior audio file when re-inserting a row with a duplicate `request_id` (no orphaned blobs).
+- [X] T075c [US2] Persist `wolof_to_english` TTS-only entries with an empty-string `audio_path` sentinel (no schema change). Update `pipeline-store.persistToHistory` to always insert; `history-repo.list()` to skip the file-existence check when `audio_path` is empty; `history-repo.delete()` to skip `unlinkAudio` when `audio_path` is empty; `app/history.tsx` `entryToPlayableResult` to set `outputMode: 'text_only'` and `localAudioUri: null` so `defaultPlayer.playResult` falls back to `expo-speech` (FR-004, FR-010, FR-011). Amend `data-model.md` §1.3 accordingly.
+- [X] T075d [P] [US2] Create `src/state/__tests__/pipeline-store.test.ts` — (a) english_to_wolof completion → `historyRepo.insert` with real audio fields + transient `deleteAsync`, (b) wolof_to_english text-only → insert with `audioPath: ''`, `audioByteSize: 0` + transient `deleteAsync`, (c) `capturedUri === localAudioUri` → no transient unlink (Constitution II TDD; covers T070 wiring).
+- [X] T075e [US2] `src/components/HistoryRow.tsx` imports `Direction` from `@/api/bff-client` (domain type), not `@/components/DirectionButton`.
+- [X] T075f [Commit] `001-wolof-translate-mobile:Phase4-US2-Remediation: real doc-dir path, tx eviction, TTS history, store tests`
+
 **Checkpoint**: US1 + US2 both independently functional. Offline replay demonstrable.
 
 ---

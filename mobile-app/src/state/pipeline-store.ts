@@ -134,19 +134,25 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
   }
 
   async function persistToHistory(terminal: TranslationResult): Promise<void> {
-    if (!terminal.localAudioUri) return;
     try {
-      const info = await getInfoAsync(terminal.localAudioUri).catch(() => null);
-      const byteSize =
-        info && 'size' in info && typeof info.size === 'number' ? info.size : 0;
-      const basename =
-        terminal.localAudioUri.split('/').pop() || `${terminal.requestId}.m4a`;
+      let audioPath = '';
+      let byteSize = 0;
+      // TTS-only entries (FR-004 wolof_to_english) persist with an empty
+      // audioPath sentinel — replay is produced on-device via expo-speech and
+      // does not need a cached file (001-wolof-translate-mobile:T075c)
+      if (terminal.localAudioUri) {
+        const info = await getInfoAsync(terminal.localAudioUri).catch(() => null);
+        byteSize =
+          info && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+        audioPath =
+          terminal.localAudioUri.split('/').pop() || `${terminal.requestId}.m4a`;
+      }
       await historyRepo.insert({
         requestId: terminal.requestId,
         direction: terminal.direction,
         transcribedText: terminal.transcribedText,
         translatedText: terminal.translatedText,
-        audioPath: basename,
+        audioPath,
         audioByteSize: byteSize,
         createdAtMs: terminal.completedAtMs,
       });

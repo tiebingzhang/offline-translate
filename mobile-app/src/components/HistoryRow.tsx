@@ -2,7 +2,7 @@ import { i18n } from '@lingui/core';
 import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { RectButton, Swipeable } from 'react-native-gesture-handler';
 
-import type { Direction } from '@/components/DirectionButton';
+import type { Direction } from '@/api/bff-client';
 import { hitTargets, paletteForScheme, radii, spacing, typography } from '@/design/tokens';
 
 export interface HistoryEntry {

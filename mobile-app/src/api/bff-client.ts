@@ -1,7 +1,9 @@
 import {
   FileSystemSessionType,
   FileSystemUploadType,
+  documentDirectory,
   downloadAsync,
+  makeDirectoryAsync,
   uploadAsync,
 } from 'expo-file-system/legacy';
 
@@ -129,7 +131,9 @@ export interface BffClient {
   checkHealth(): Promise<{ status: 'ok' }>;
 }
 
-const DEFAULT_AUDIO_DIR = 'file:///document/audio/';
+// Derived from the real Documents directory so downloadAsync writes to a path
+// that's actually on disk at runtime (001-wolof-translate-mobile:T075a)
+const DEFAULT_AUDIO_DIR = `${documentDirectory ?? 'file:///document/'}audio/`;
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -376,6 +380,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
     const url = joinUrl(baseUrl, `/api/requests/${requestId}/audio`);
     const target = `${audioDir.replace(/\/+$/, '')}/${requestId}.m4a`;
     try {
+      await makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => undefined);
       const res = await downloadAsync(url, target);
       if (res.status >= 400) {
         return null;
