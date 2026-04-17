@@ -179,7 +179,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T072 [US2] Implement FR-013c swipe-to-delete in `HistoryRow` + `app/history.tsx` using the iOS-native swipe reveal pattern → `historyRepo.delete(id)` (atomic row + file unlink)
 - [X] T073 [US2] Add navigation affordance to History from `mobile-app/app/index.tsx` — history icon in the top app bar, with localized accessibility label
 - [X] T074 [P] [US2] Create `mobile-app/maestro/flows/us2-offline-history.yaml` — complete one translation → toggle airplane mode → open History → tap replay → assert playback active; swipe row → tap Delete → assert row removed
-- [ ] T075 [Commit] `001-wolof-translate-mobile:Phase4-US2: offline history cache`
+- [X] T075 [Commit] `001-wolof-translate-mobile:Phase4-US2: offline history cache`
 
 **Checkpoint**: US1 + US2 both independently functional. Offline replay demonstrable.
 
