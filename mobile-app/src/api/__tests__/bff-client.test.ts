@@ -106,6 +106,41 @@ describe('bff-client', () => {
       });
     });
 
+    test('C3a — upload stalled past timeoutAtMs rejects client_timeout retryable=true', async () => {
+      (legacyFs.uploadAsync as jest.Mock).mockImplementationOnce(
+        () => new Promise(() => {}),
+      );
+
+      let now = 1_000_000;
+      const client = createBffClient({
+        baseUrl: BFF_TEST_BASE_URL,
+        nowMs: () => now,
+        sleepMs: async (ms) => {
+          now += ms;
+        },
+      });
+
+      jest.useFakeTimers({ doNotFake: ['performance'] });
+      try {
+        const captured = client
+          .postTranslateSpeak('file:///c/x.m4a', 'english_to_wolof', {
+            timeoutAtMs: now + 100,
+          })
+          .then(
+            () => ({ resolved: true as const }),
+            (err: unknown) => ({ resolved: false as const, err }),
+          );
+        await jest.advanceTimersByTimeAsync(150);
+        const outcome = await captured;
+        expect(outcome).toMatchObject({
+          resolved: false,
+          err: { kind: 'client_timeout', retryable: true },
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     test('C4 — malformed JSON body throws malformed_response retryable=false', async () => {
       (legacyFs.uploadAsync as jest.Mock).mockResolvedValueOnce({
         status: 202,

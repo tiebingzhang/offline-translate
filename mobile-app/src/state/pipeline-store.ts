@@ -62,14 +62,16 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
     durationSec: number,
   ): Promise<void> {
     const client = getClient();
+    const timeoutAtMs = get().timeoutAtMs ?? startedAtMs + (30 + durationSec) * 1000;
     try {
-      const accepted = await client.postTranslateSpeak(capturedUri, direction);
+      const accepted = await client.postTranslateSpeak(capturedUri, direction, {
+        timeoutAtMs,
+      });
       dispatch({
         type: 'uploadAccepted',
         requestId: accepted.requestId,
         pollAfterMs: accepted.pollAfterMs,
       });
-      const timeoutAtMs = get().timeoutAtMs ?? startedAtMs + (30 + durationSec) * 1000;
       await pendingJobsRepo.insert({
         requestId: accepted.requestId,
         direction,

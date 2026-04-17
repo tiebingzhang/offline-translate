@@ -116,7 +116,11 @@ export interface BffClientConfig {
 }
 
 export interface BffClient {
-  postTranslateSpeak(audioUri: string, direction: Direction): Promise<UploadAccepted>;
+  postTranslateSpeak(
+    audioUri: string,
+    direction: Direction,
+    opts?: { timeoutAtMs?: number },
+  ): Promise<UploadAccepted>;
   pollUntilTerminal(
     requestId: string,
     opts: { timeoutAtMs: number },
@@ -193,24 +197,51 @@ export function createBffClient(config: BffClientConfig): BffClient {
   async function postTranslateSpeak(
     audioUri: string,
     direction: Direction,
+    opts?: { timeoutAtMs?: number },
   ): Promise<UploadAccepted> {
-    let response: { status: number; body: string };
-    try {
-      response = await uploadAsync(joinUrl(baseUrl, '/api/translate-speak'), audioUri, {
+    const uploadPromise = uploadAsync(
+      joinUrl(baseUrl, '/api/translate-speak'),
+      audioUri,
+      {
         httpMethod: 'POST',
         fieldName: 'file',
         mimeType: 'audio/m4a',
         sessionType: FileSystemSessionType.BACKGROUND,
         uploadType: FileSystemUploadType.MULTIPART,
         parameters: { direction },
-      });
+      },
+    );
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let response: { status: number; body: string };
+    try {
+      if (opts?.timeoutAtMs !== undefined) {
+        const waitMs = Math.max(0, opts.timeoutAtMs - nowMs());
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(
+              new TranslationError({
+                kind: 'client_timeout',
+                message: 'Translation did not complete in time.',
+                retryable: true,
+              }),
+            );
+          }, waitMs);
+        });
+        response = await Promise.race([uploadPromise, timeoutPromise]);
+      } else {
+        response = await uploadPromise;
+      }
     } catch (cause) {
+      if (isTranslationError(cause)) throw cause;
       throw new TranslationError({
         kind: 'upload_failed',
         message: 'Network error during upload.',
         retryable: true,
         cause,
       });
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
 
     if (response.status >= 400) {
