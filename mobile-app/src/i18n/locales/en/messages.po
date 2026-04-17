@@ -150,3 +150,48 @@ msgstr "Stereo"
 
 msgid "metadata.direction"
 msgstr "Direction"
+
+msgid "step.idle"
+msgstr ""
+
+msgid "step.uploading"
+msgstr "Uploading recording"
+
+msgid "step.queued"
+msgstr "Queued"
+
+msgid "step.normalizing"
+msgstr "Preparing audio"
+
+msgid "step.transcribing.english"
+msgstr "Transcribing English audio to text"
+
+msgid "step.transcribing.wolof"
+msgstr "Transcribing Wolof audio to text"
+
+msgid "step.translating.english_to_wolof"
+msgstr "Translating English to Wolof"
+
+msgid "step.translating.wolof_to_english"
+msgstr "Translating Wolof to English"
+
+msgid "step.generating_wolof_audio"
+msgstr "Generating Wolof audio"
+
+msgid "step.playing"
+msgstr "Playing translation"
+
+msgid "step.retrying"
+msgstr "Retrying…"
+
+msgid "step.timed_out"
+msgstr "Timed out"
+
+msgid "step.failed"
+msgstr "Failed"
+
+msgid "step.countdown"
+msgstr "{seconds}s remaining"
+
+msgid "step.a11y"
+msgstr "{label} — {seconds} seconds remaining"

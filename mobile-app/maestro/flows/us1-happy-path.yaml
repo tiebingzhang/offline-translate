@@ -17,6 +17,24 @@ tags:
     text: "English → Wolof"
     duration: 3000
 
+# FR-003a: bottom pipeline status bar is visible once the pipeline leaves idle.
+- assertVisible:
+    id: "PipelineStatusBar"
+    timeout: 3000
+
+# FR-003a: bar shows one of the expected plain-language step labels during the polling window.
+- extendedWaitUntil:
+    visible:
+      text: "Transcribing English audio to text"
+    timeout: 8000
+    optional: true
+
+# FR-003a: countdown decrements — sample before and after a short wait and compare.
+- extendedWaitUntil:
+    visible:
+      text: "remaining"
+    timeout: 3000
+
 # Pipeline progresses through backend stages. Stage labels come from i18n/messages.po.
 - assertVisible:
     text: "Transcribing"

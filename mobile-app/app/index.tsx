@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import DirectionButton, { type Direction } from '@/components/DirectionButton';
 import MetadataGrid from '@/components/MetadataGrid';
+import PipelineStatusBar, { BAR_HEIGHT } from '@/components/PipelineStatusBar';
 import RetryBanner from '@/components/RetryBanner';
 import StatusPill from '@/components/StatusPill';
 import { paletteForScheme, radii, spacing, typography } from '@/design/tokens';
@@ -99,10 +100,15 @@ export default function MainScreen() {
             ? 'failed'
             : null;
 
+  const barVisible = phase !== 'idle';
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.base }]}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          barVisible ? { paddingBottom: BAR_HEIGHT + spacing.xxxl } : null,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
@@ -207,6 +213,9 @@ export default function MainScreen() {
           />
         ) : null}
       </ScrollView>
+      <View style={styles.barAnchor} pointerEvents="box-none">
+        <PipelineStatusBar />
+      </View>
     </SafeAreaView>
   );
 }
@@ -250,5 +259,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.body.fontFamily,
     fontSize: typography.body.sizes.lg,
     lineHeight: 26,
+  },
+  barAnchor: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
 });
