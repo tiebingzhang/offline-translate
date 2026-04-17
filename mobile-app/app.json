@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "wolof-translate",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -27,7 +26,8 @@
         }
       ],
       "expo-router",
-      "expo-localization"
+      "expo-localization",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

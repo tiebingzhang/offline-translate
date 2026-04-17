@@ -97,3 +97,7 @@ export const hitTargets = {
 export function paletteFor(mode: ColorMode): Palette {
   return mode === 'dark' ? darkPalette : lightPalette;
 }
+
+export function paletteForScheme(scheme: string | null | undefined): Palette {
+  return scheme === 'dark' ? darkPalette : lightPalette;
+}
