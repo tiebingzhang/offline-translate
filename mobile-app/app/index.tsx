@@ -1,8 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import { i18n } from '@lingui/core';
+import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { useCallback } from 'react';
 import {
   Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -41,6 +44,7 @@ function useMicPermissionDeniedHandler() {
 
 export default function MainScreen() {
   const palette = paletteForScheme(useColorScheme());
+  const router = useRouter();
 
   const phase = usePipelineStore((s) => s.phase);
   const direction = usePipelineStore((s) => s.direction);
@@ -115,7 +119,24 @@ export default function MainScreen() {
           <Text style={[styles.title, { color: palette.text }]}>
             {i18n._('app.name')}
           </Text>
-          <StatusPill stage={statusStage} />
+          <View style={styles.headerActions}>
+            <StatusPill stage={statusStage} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={i18n._('a11y.openHistory')}
+              onPress={() => router.push('/history')}
+              style={({ pressed }) => [
+                styles.historyIcon,
+                {
+                  backgroundColor: palette.surfaceElevated,
+                  borderColor: palette.border,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="time-outline" size={22} color={palette.text} />
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.buttons}>
@@ -234,6 +255,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  historyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: typography.heading.fontFamily,

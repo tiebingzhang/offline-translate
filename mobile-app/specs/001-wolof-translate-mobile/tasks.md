@@ -146,7 +146,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T132 [US1] Implement `mobile-app/src/components/PipelineStatusBar.tsx` — consume `usePipelineStore` selectors for `phase`, `backendStage`, `direction`, `timeoutAtMs`; resolve label via `stepLabel(...)`; run `useEffect` that starts `setInterval(1000)` computing `secondsLeft = Math.max(0, Math.ceil((timeoutAtMs - Date.now()) / 1000))`; clear interval on terminal phase or unmount; render null when `phase === 'idle'`; compose `accessibilityLabel` via the `step.a11y` ICU-interpolated message; honor `AccessibilityInfo.isReduceMotionEnabled()` per FR-032 (no animated state transitions when reduce-motion is on) (satisfies T129)
 - [X] T133 [US1] Wire `mobile-app/app/index.tsx` to the live `PipelineStatusBar`: replace the fixture cycler from T126 with the production component; keep the existing header `StatusPill` unchanged; preserve the T040-approved composition of `DirectionButton` + `StatusPill` + `MetadataGrid` + result text; ensure `paddingBottom` continues to reserve space for the bar when `phase !== 'idle'`
 - [X] T134 [P] [US1] Extend `mobile-app/maestro/flows/us1-happy-path.yaml` with three assertions mid-flight: (a) `id: PipelineStatusBar` is visible, (b) visible text matches one of the expected localized `step.*` strings during the polling window, (c) the countdown numeric value strictly decreases between two sampled `extendedWaitUntil` checks
-- [ ] T135 [Commit] `001-wolof-translate-mobile:Phase3-US1-FR003a: persistent pipeline status bar (step label + countdown)`
+- [X] T135 [Commit] `001-wolof-translate-mobile:Phase3-US1-FR003a: persistent pipeline status bar (step label + countdown)`
 
 **Checkpoint — FR-003a**: Bottom status bar visible throughout an in-flight translation, label matches the FR-003a vocabulary at every transition, countdown decrements at 1 Hz and clamps to zero on timeout. No BFF change required; Back-end scope gate remains CLEARED.
 
@@ -160,25 +160,25 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 
 ### Mock-first UI
 
-- [ ] T062 [US2] Create `mobile-app/src/components/HistoryRow.tsx` as a visual mock: source text, translated text, direction badge, replay button, iOS-native swipe-to-delete affordance; renders from fixture data (no store wiring)
-- [ ] T063 [US2] Create `mobile-app/src/components/EmptyState.tsx`: localized message directing the user back to the main screen (FR-013b)
-- [ ] T064 [US2] Update `mobile-app/app/history.tsx` to render a `FlatList` of `HistoryRow` over a fixture array + fallback `EmptyState` when the array is empty
-- [ ] T065 [M] [US2] MANUAL: User reviews and approves the mock History screen — newest-first ordering, empty-state copy, swipe-to-delete UX, replay button placement, direction badge contrast in light+dark. No US2 business-logic task below starts until approved.
+- [X] T062 [US2] Create `mobile-app/src/components/HistoryRow.tsx` as a visual mock: source text, translated text, direction badge, replay button, iOS-native swipe-to-delete affordance; renders from fixture data (no store wiring)
+- [X] T063 [US2] Create `mobile-app/src/components/EmptyState.tsx`: localized message directing the user back to the main screen (FR-013b)
+- [X] T064 [US2] Update `mobile-app/app/history.tsx` to render a `FlatList` of `HistoryRow` over a fixture array + fallback `EmptyState` when the array is empty
+- [X] T065 [M] [US2] MANUAL: User reviews and approves the mock History screen — newest-first ordering, empty-state copy, swipe-to-delete UX, replay button placement, direction badge contrast in light+dark. No US2 business-logic task below starts until approved. (approved 2026-04-17)
 
 ### Tests
 
-- [ ] T066 [P] [US2] Create `mobile-app/src/cache/__tests__/history-repo.test.ts` — `insert()` creates row + writes audio file; 20-row cap trims oldest (FR-012); 50 MB cap trims oldest (FR-012); `delete()` removes row AND unlinks file atomically (FR-013c); `list()` returns newest-first (FR-013a); corrupt rows (file missing on disk) are pruned during `list()`
-- [ ] T067 [P] [US2] Create `mobile-app/src/components/__tests__/HistoryRow.test.tsx` — renders all fields, fires onReplay + onDelete, shows the correct direction badge and accessibility label
-- [ ] T068 [P] [US2] Create `mobile-app/src/components/__tests__/EmptyState.test.tsx` — renders the localized empty-state copy keyed by `history.empty`
+- [X] T066 [P] [US2] Create `mobile-app/src/cache/__tests__/history-repo.test.ts` — `insert()` creates row + writes audio file; 20-row cap trims oldest (FR-012); 50 MB cap trims oldest (FR-012); `delete()` removes row AND unlinks file atomically (FR-013c); `list()` returns newest-first (FR-013a); corrupt rows (file missing on disk) are pruned during `list()`
+- [X] T067 [P] [US2] Create `mobile-app/src/components/__tests__/HistoryRow.test.tsx` — renders all fields, fires onReplay + onDelete, shows the correct direction badge and accessibility label
+- [X] T068 [P] [US2] Create `mobile-app/src/components/__tests__/EmptyState.test.tsx` — renders the localized empty-state copy keyed by `history.empty`
 
 ### Implementation
 
-- [ ] T069 [US2] Implement `mobile-app/src/cache/history-repo.ts` — SQLite `history` INSERT/DELETE/SELECT (ordering on `idx_history_created_at_desc`) + `Paths.document/audio/` file I/O; eviction honoring both 20-row and 50 MB caps in a single transaction (satisfies T066)
-- [ ] T070 [US2] Wire pipeline completion hook in `mobile-app/src/state/pipeline-store.ts`: after `downloadAudio()` succeeds, call `historyRepo.insert(...)` then unlink the transient captured-audio temp file (FR-021)
-- [ ] T071 [US2] Wire `mobile-app/app/history.tsx` to `historyRepo.list()`: show cached entries newest-first; fallback to `EmptyState` when empty; replay tap plays local audio via `expo-audio` using `localAudioUri` (no network — SC-007)
-- [ ] T072 [US2] Implement FR-013c swipe-to-delete in `HistoryRow` + `app/history.tsx` using the iOS-native swipe reveal pattern → `historyRepo.delete(id)` (atomic row + file unlink)
-- [ ] T073 [US2] Add navigation affordance to History from `mobile-app/app/index.tsx` — history icon in the top app bar, with localized accessibility label
-- [ ] T074 [P] [US2] Create `mobile-app/maestro/flows/us2-offline-history.yaml` — complete one translation → toggle airplane mode → open History → tap replay → assert playback active; swipe row → tap Delete → assert row removed
+- [X] T069 [US2] Implement `mobile-app/src/cache/history-repo.ts` — SQLite `history` INSERT/DELETE/SELECT (ordering on `idx_history_created_at_desc`) + `Paths.document/audio/` file I/O; eviction honoring both 20-row and 50 MB caps in a single transaction (satisfies T066)
+- [X] T070 [US2] Wire pipeline completion hook in `mobile-app/src/state/pipeline-store.ts`: after `downloadAudio()` succeeds, call `historyRepo.insert(...)` then unlink the transient captured-audio temp file (FR-021)
+- [X] T071 [US2] Wire `mobile-app/app/history.tsx` to `historyRepo.list()`: show cached entries newest-first; fallback to `EmptyState` when empty; replay tap plays local audio via `expo-audio` using `localAudioUri` (no network — SC-007)
+- [X] T072 [US2] Implement FR-013c swipe-to-delete in `HistoryRow` + `app/history.tsx` using the iOS-native swipe reveal pattern → `historyRepo.delete(id)` (atomic row + file unlink)
+- [X] T073 [US2] Add navigation affordance to History from `mobile-app/app/index.tsx` — history icon in the top app bar, with localized accessibility label
+- [X] T074 [P] [US2] Create `mobile-app/maestro/flows/us2-offline-history.yaml` — complete one translation → toggle airplane mode → open History → tap replay → assert playback active; swipe row → tap Delete → assert row removed
 - [ ] T075 [Commit] `001-wolof-translate-mobile:Phase4-US2: offline history cache`
 
 **Checkpoint**: US1 + US2 both independently functional. Offline replay demonstrable.

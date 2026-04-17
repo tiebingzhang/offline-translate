@@ -97,6 +97,15 @@ msgstr "Replay"
 msgid "history.delete"
 msgstr "Delete"
 
+msgid "history.a11y.row"
+msgstr "{direction}. You said: {source}. Translation: {target}."
+
+msgid "history.a11y.replay"
+msgstr "Replay this translation"
+
+msgid "history.a11y.delete"
+msgstr "Delete this translation"
+
 msgid "a11y.directionButton"
 msgstr "Translate button"
 
@@ -108,6 +117,9 @@ msgstr "Translation error"
 
 msgid "a11y.metadataGrid"
 msgstr "Recording metadata"
+
+msgid "a11y.openHistory"
+msgstr "Open translation history"
 
 msgid "recording.releaseHint"
 msgstr "Release to send"

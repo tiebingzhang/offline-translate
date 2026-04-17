@@ -1,3 +1,4 @@
+import { deleteAsync, getInfoAsync } from 'expo-file-system/legacy';
 import { create } from 'zustand';
 
 import {
@@ -8,6 +9,7 @@ import {
   type TranslationResult,
 } from '@/api/bff-client';
 import { defaultPlayer } from '@/audio/player';
+import { historyRepo } from '@/cache/history-repo';
 import { pendingJobsRepo, type PendingJob } from '@/cache/pending-jobs-repo';
 import { log } from '@/utils/logger';
 import {
@@ -117,6 +119,9 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
       if (terminal) {
         dispatch({ type: 'jobCompleted', result: terminal });
         await pendingJobsRepo.delete(requestId).catch(() => undefined);
+        const capturedBefore = get().capturedAudioUri;
+        await persistToHistory(terminal);
+        await unlinkTransientCapture(capturedBefore, terminal.localAudioUri);
         dispatch({ type: 'playbackStarted' });
         void defaultPlayer.playResult(terminal, {
           onEnded: () => dispatch({ type: 'playbackEnded' }),
@@ -126,6 +131,36 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
       handlePipelineError(err);
       await pendingJobsRepo.delete(requestId).catch(() => undefined);
     }
+  }
+
+  async function persistToHistory(terminal: TranslationResult): Promise<void> {
+    if (!terminal.localAudioUri) return;
+    try {
+      const info = await getInfoAsync(terminal.localAudioUri).catch(() => null);
+      const byteSize =
+        info && 'size' in info && typeof info.size === 'number' ? info.size : 0;
+      const basename =
+        terminal.localAudioUri.split('/').pop() || `${terminal.requestId}.m4a`;
+      await historyRepo.insert({
+        requestId: terminal.requestId,
+        direction: terminal.direction,
+        transcribedText: terminal.transcribedText,
+        translatedText: terminal.translatedText,
+        audioPath: basename,
+        audioByteSize: byteSize,
+        createdAtMs: terminal.completedAtMs,
+      });
+    } catch (err) {
+      log('warn', 'history', 'insert failed', { err: String(err) });
+    }
+  }
+
+  async function unlinkTransientCapture(
+    capturedUri: string | null,
+    localAudioUri: string | null,
+  ): Promise<void> {
+    if (!capturedUri || capturedUri === localAudioUri) return;
+    await deleteAsync(capturedUri, { idempotent: true }).catch(() => undefined);
   }
 
   function handlePipelineError(err: unknown): void {
