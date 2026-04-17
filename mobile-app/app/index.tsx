@@ -1,67 +1,103 @@
 import { i18n } from '@lingui/core';
-import { useEffect, useMemo, useState } from 'react';
+import * as Linking from 'expo-linking';
+import { useCallback } from 'react';
 import {
-  SafeAreaView,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
   View,
   useColorScheme,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import DirectionButton, { type Direction } from '@/components/DirectionButton';
 import MetadataGrid from '@/components/MetadataGrid';
-import StatusPill, { type BackendStage } from '@/components/StatusPill';
+import RetryBanner from '@/components/RetryBanner';
+import StatusPill from '@/components/StatusPill';
 import { paletteForScheme, radii, spacing, typography } from '@/design/tokens';
+import { useRecorder } from '@/audio/recorder';
+import { usePipelineStore } from '@/state/pipeline-store';
 
-type MockPressKey = Direction | null;
-
-const STAGE_CYCLE: BackendStage[] = [
-  'queued',
-  'normalizing',
-  'transcribing',
-  'translating',
-  'generating_speech',
-  'completed',
-];
-
-const MOCK_TRANSCRIBED = 'Good morning, how are you today?';
-const MOCK_TRANSLATED = 'Naka nga def ci suba si, jamm nga am?';
+function useMicPermissionDeniedHandler() {
+  return useCallback(() => {
+    Alert.alert(
+      i18n._('error.microphone_denied'),
+      undefined,
+      [
+        { text: i18n._('action.discard'), style: 'cancel' },
+        {
+          text: i18n._('action.openSettings'),
+          onPress: () => {
+            void Linking.openSettings();
+          },
+        },
+      ],
+      { cancelable: true },
+    );
+  }, []);
+}
 
 export default function MainScreen() {
   const palette = paletteForScheme(useColorScheme());
 
-  const [pressed, setPressed] = useState<MockPressKey>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [stageIndex, setStageIndex] = useState(0);
+  const phase = usePipelineStore((s) => s.phase);
+  const direction = usePipelineStore((s) => s.direction);
+  const backendStage = usePipelineStore((s) => s.backendStage);
+  const result = usePipelineStore((s) => s.result);
+  const error = usePipelineStore((s) => s.error);
+  const recordedDurationSec = usePipelineStore((s) => s.recordedDurationSec);
 
-  useEffect(() => {
-    if (pressed == null) {
-      setElapsedSec(0);
+  const pressStart = usePipelineStore((s) => s.pressStart);
+  const pressRelease = usePipelineStore((s) => s.pressRelease);
+  const pressReleaseTooShort = usePipelineStore((s) => s.pressReleaseTooShort);
+  const discard = usePipelineStore((s) => s.discard);
+  const retry = usePipelineStore((s) => s.retry);
+
+  const onPermissionDenied = useMicPermissionDeniedHandler();
+
+  const recorder = useRecorder({
+    onPermissionDenied,
+    onTooShort: pressReleaseTooShort,
+    onAutoSubmit: (uri, durationSec) => {
+      void pressRelease(uri, durationSec);
+    },
+  });
+
+  const handlePressIn = (targetDirection: Direction) => {
+    if (phase !== 'idle' && phase !== 'completed') return;
+    if (phase === 'completed') {
+      discard();
+    }
+    pressStart(targetDirection);
+    void recorder.start();
+  };
+
+  const handlePressOut = async () => {
+    if (recorder.status !== 'recording') return;
+    const stopped = await recorder.stop();
+    if (!stopped) {
+      pressReleaseTooShort();
       return;
     }
-    const started = Date.now();
-    const tick = setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - started) / 1000));
-    }, 250);
-    return () => clearInterval(tick);
-  }, [pressed]);
+    await pressRelease(stopped.uri, stopped.durationSec);
+  };
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setStageIndex((prev) => (prev + 1) % STAGE_CYCLE.length);
-    }, 1500);
-    return () => clearInterval(id);
-  }, []);
+  const isButtonRecording = (d: Direction) =>
+    recorder.status === 'recording' && direction === d;
 
-  const activeDirection: Direction = pressed ?? 'english_to_wolof';
-  const currentStage = STAGE_CYCLE[stageIndex];
-
-  const countdown = useMemo(() => {
-    if (pressed == null) return null;
-    const remaining = 60 - elapsedSec;
-    return remaining <= 5 ? Math.max(remaining, 0) : null;
-  }, [pressed, elapsedSec]);
+  const showRetry = phase === 'failed' || phase === 'timed_out';
+  const showResult = phase === 'completed' || phase === 'playing';
+  const statusStage =
+    phase === 'uploading'
+      ? 'queued'
+      : phase === 'polling' || phase === 'retrying' || phase === 'playing'
+        ? backendStage
+        : phase === 'completed'
+          ? 'completed'
+          : phase === 'failed' || phase === 'timed_out'
+            ? 'failed'
+            : null;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.base }]}>
@@ -73,64 +109,103 @@ export default function MainScreen() {
           <Text style={[styles.title, { color: palette.text }]}>
             {i18n._('app.name')}
           </Text>
-          <StatusPill stage={currentStage} />
+          <StatusPill stage={statusStage} />
         </View>
 
         <View style={styles.buttons}>
           <DirectionButton
             direction="english_to_wolof"
-            pressed={pressed === 'english_to_wolof'}
-            recording={pressed === 'english_to_wolof'}
-            elapsedSec={elapsedSec}
-            countdownSec={pressed === 'english_to_wolof' ? countdown : null}
-            onPressIn={() => setPressed('english_to_wolof')}
-            onPressOut={() => setPressed(null)}
+            recording={isButtonRecording('english_to_wolof')}
+            elapsedSec={recorder.elapsedSec}
+            countdownSec={
+              isButtonRecording('english_to_wolof') ? recorder.countdownSec : null
+            }
+            disabled={phase !== 'idle' && phase !== 'recording' && phase !== 'completed'}
+            onPressIn={() => handlePressIn('english_to_wolof')}
+            onPressOut={handlePressOut}
           />
           <DirectionButton
             direction="wolof_to_english"
-            pressed={pressed === 'wolof_to_english'}
-            recording={pressed === 'wolof_to_english'}
-            elapsedSec={elapsedSec}
-            countdownSec={pressed === 'wolof_to_english' ? countdown : null}
-            onPressIn={() => setPressed('wolof_to_english')}
-            onPressOut={() => setPressed(null)}
+            recording={isButtonRecording('wolof_to_english')}
+            elapsedSec={recorder.elapsedSec}
+            countdownSec={
+              isButtonRecording('wolof_to_english') ? recorder.countdownSec : null
+            }
+            disabled={phase !== 'idle' && phase !== 'recording' && phase !== 'completed'}
+            onPressIn={() => handlePressIn('wolof_to_english')}
+            onPressOut={handlePressOut}
           />
         </View>
 
-        <MetadataGrid
-          durationSec={elapsedSec > 0 ? elapsedSec : 3.2}
-          sampleRateHz={16000}
-          channels={1}
-          direction={activeDirection}
-        />
+        {recorder.status === 'recording' || recordedDurationSec > 0 ? (
+          <MetadataGrid
+            durationSec={
+              recorder.status === 'recording' ? recorder.elapsedSec : recordedDurationSec
+            }
+            sampleRateHz={16_000}
+            channels={1}
+            direction={direction ?? 'english_to_wolof'}
+          />
+        ) : null}
 
-        <View
-          style={[
-            styles.textBlock,
-            { backgroundColor: palette.surface, borderColor: palette.border },
-          ]}
-        >
-          <Text style={[styles.textLabel, { color: palette.textMuted }]}>
-            {i18n._('text.source')}
-          </Text>
-          <Text style={[styles.textBody, { color: palette.text }]}>
-            {MOCK_TRANSCRIBED}
-          </Text>
-        </View>
+        {showResult && result ? (
+          <>
+            <View
+              style={[
+                styles.textBlock,
+                { backgroundColor: palette.surface, borderColor: palette.border },
+              ]}
+            >
+              <Text style={[styles.textLabel, { color: palette.textMuted }]}>
+                {i18n._('text.source')}
+              </Text>
+              <Text style={[styles.textBody, { color: palette.text }]}>
+                {result.transcribedText}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.textBlock,
+                {
+                  backgroundColor: palette.surfaceElevated,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <Text style={[styles.textLabel, { color: palette.textMuted }]}>
+                {i18n._('text.translation')}
+              </Text>
+              <Text style={[styles.textBody, { color: palette.text }]}>
+                {result.translatedText}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <View
+            style={[
+              styles.textBlock,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
+          >
+            <Text style={[styles.textLabel, { color: palette.textMuted }]}>
+              {i18n._('text.translation')}
+            </Text>
+            <Text style={[styles.textBody, { color: palette.textMuted }]}>
+              {i18n._('text.placeholder')}
+            </Text>
+          </View>
+        )}
 
-        <View
-          style={[
-            styles.textBlock,
-            { backgroundColor: palette.surfaceElevated, borderColor: palette.border },
-          ]}
-        >
-          <Text style={[styles.textLabel, { color: palette.textMuted }]}>
-            {i18n._('text.translation')}
-          </Text>
-          <Text style={[styles.textBody, { color: palette.text }]}>
-            {MOCK_TRANSLATED}
-          </Text>
-        </View>
+        {showRetry ? (
+          <RetryBanner
+            error={error}
+            phase={phase as 'failed' | 'timed_out'}
+            onRetry={() => {
+              void retry();
+            }}
+            onDiscard={discard}
+          />
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

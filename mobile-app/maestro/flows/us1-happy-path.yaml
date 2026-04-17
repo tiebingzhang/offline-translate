@@ -1,0 +1,37 @@
+appId: com.cryingaffrica.wolofTranslate
+name: US1 — Happy path (press-and-hold English → Wolof)
+tags:
+  - us1
+  - mvp
+---
+# Assumes BFF + BE-1 + BE-2 are reachable and the active config points to it.
+# (001-wolof-translate-mobile:T059)
+- launchApp:
+    clearState: true
+- assertVisible: "Wolof Translate"
+- assertVisible: "English → Wolof"
+- assertVisible: "Wolof → English"
+
+# Press-and-hold the English→Wolof direction for 3 s while the tester speaks a short phrase.
+- longPressOn:
+    text: "English → Wolof"
+    duration: 3000
+
+# Pipeline progresses through backend stages. Stage labels come from i18n/messages.po.
+- assertVisible:
+    text: "Transcribing"
+    optional: true
+
+# Within SC-001 bounds (≤ 10 s on good network for ≤ 5 s clip) the transcribed + translated text
+# and audio playback become visible.
+- assertVisible:
+    text: "You said"
+    timeout: 10000
+- assertVisible:
+    text: "Translation"
+    timeout: 10000
+
+# The status pill lands on "Done" once playback starts.
+- assertVisible:
+    text: "Done"
+    timeout: 12000

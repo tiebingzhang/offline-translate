@@ -26,10 +26,12 @@ function convertKeys(value: unknown, transform: (k: string) => string): unknown 
   return value;
 }
 
-export function fromWire<T = unknown>(wire: Json): T {
+export function fromWire<T = unknown>(wire: unknown): T {
   return convertKeys(wire, snakeToCamel) as T;
 }
 
 export function toWire<T = unknown>(domain: unknown): T {
   return convertKeys(domain, camelToSnake) as T;
 }
+
+export type { Json };

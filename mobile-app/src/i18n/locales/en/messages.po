@@ -73,6 +73,12 @@ msgstr "Unexpected response from the server."
 msgid "error.microphone_denied"
 msgstr "Microphone access is needed to record. Open Settings to allow it."
 
+msgid "error.timed_out"
+msgstr "This is taking too long. Your recording is saved — try again."
+
+msgid "error.unknown"
+msgstr "Something went wrong. Please try again."
+
 msgid "action.retry"
 msgstr "Retry"
 

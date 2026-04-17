@@ -1,0 +1,43 @@
+appId: com.cryingaffrica.wolofTranslate
+name: US1 — Client-side timeout banner (FR-020)
+tags:
+  - us1
+  - reliability
+env:
+  UNREACHABLE_BFF: "http://192.0.2.1:8090"
+---
+# Pointing the client at an unreachable host should surface the retry banner within the
+# FR-020 window: base 30 s + 1 s/audio-second (5 s clip → 35 s envelope).
+# (001-wolof-translate-mobile:T060)
+- launchApp:
+    clearState: true
+
+# Enable dev mode and override the backend URL to an unreachable host.
+# (Dev-panel affordances ship in US3 — this flow assumes the dev-mode access toggle exists.)
+- tapOn:
+    id: "dev-mode-toggle"
+    optional: true
+- tapOn:
+    id: "open-dev-panel"
+    optional: true
+- inputText:
+    id: "backend-url-input"
+    value: ${UNREACHABLE_BFF}
+- tapOn: "Save"
+    optional: true
+
+# Return to Main and record a 5-second phrase to exercise the payload-proportional timeout.
+- tapOn:
+    text: "Main"
+    optional: true
+- longPressOn:
+    text: "English → Wolof"
+    duration: 5000
+
+# Upload will not reach the server; retry banner must appear within the payload-proportional
+# window (30 + 5 = 35 s).
+- assertVisible:
+    text: "Retry"
+    timeout: 45000
+- assertVisible:
+    text: "Discard"

@@ -21,6 +21,8 @@ export const messages: Record<string, string> = {
   'error.client_timeout': 'This is taking too long. Your recording is saved — try again.',
   'error.malformed_response': 'Unexpected response from the server.',
   'error.microphone_denied': 'Microphone access is needed to record. Open Settings to allow it.',
+  'error.timed_out': 'This is taking too long. Your recording is saved — try again.',
+  'error.unknown': 'Something went wrong. Please try again.',
   'action.retry': 'Retry',
   'action.discard': 'Discard',
   'action.openSettings': 'Open Settings',
