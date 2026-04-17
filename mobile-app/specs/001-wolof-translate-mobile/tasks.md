@@ -83,10 +83,10 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 
 ### Mock-first UI (Constitution VIII — gate on [M] before business logic)
 
-- [ ] T036 [US1] Create `mobile-app/src/components/DirectionButton.tsx` as a visual mock: two large full-width pressable tiles (min 96 pt tall) with pressed/recording states, animated pulse while "recording", haptic-feedback stub; renders from fixture props (no store wiring)
-- [ ] T037 [US1] Create `mobile-app/src/components/StatusPill.tsx` as a visual mock: badge cycling through `queued → normalizing → transcribing → translating → generating_speech → completed` from a fixture prop; localized labels from `src/i18n`
-- [ ] T038 [US1] Create `mobile-app/src/components/MetadataGrid.tsx` as a visual mock rendering hard-coded duration, sample rate, channel count, and active direction from fixture props
-- [ ] T039 [US1] Update `mobile-app/app/index.tsx` to compose `DirectionButton` + `StatusPill` + `MetadataGrid` + a mock transcribed/translated text pair area using fixture data from `data-model.md` §1.2
+- [X] T036 [US1] Create `mobile-app/src/components/DirectionButton.tsx` as a visual mock: two large full-width pressable tiles (min 96 pt tall) with pressed/recording states, animated pulse while "recording", haptic-feedback stub; renders from fixture props (no store wiring)
+- [X] T037 [US1] Create `mobile-app/src/components/StatusPill.tsx` as a visual mock: badge cycling through `queued → normalizing → transcribing → translating → generating_speech → completed` from a fixture prop; localized labels from `src/i18n`
+- [X] T038 [US1] Create `mobile-app/src/components/MetadataGrid.tsx` as a visual mock rendering hard-coded duration, sample rate, channel count, and active direction from fixture props
+- [X] T039 [US1] Update `mobile-app/app/index.tsx` to compose `DirectionButton` + `StatusPill` + `MetadataGrid` + a mock transcribed/translated text pair area using fixture data from `data-model.md` §1.2
 - [ ] T040 [M] [US1] MANUAL: User reviews and approves the mock Main screen — layout, hit-target size, copy, token-level palette direction, motion feel. No US1 business-logic task below starts until approval is recorded here.
 
 ### Contract & integration tests (TDD — Constitution II)

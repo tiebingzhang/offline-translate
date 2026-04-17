@@ -99,3 +99,48 @@ msgstr "Current pipeline status"
 
 msgid "a11y.retryBanner"
 msgstr "Translation error"
+
+msgid "a11y.metadataGrid"
+msgstr "Recording metadata"
+
+msgid "recording.releaseHint"
+msgstr "Release to send"
+
+msgid "recording.elapsed"
+msgstr "{seconds}s"
+
+msgid "recording.countdownHint"
+msgstr "Auto-stop in {seconds}s"
+
+msgid "text.source"
+msgstr "You said"
+
+msgid "text.translation"
+msgstr "Translation"
+
+msgid "text.placeholder"
+msgstr "Your translation will appear here."
+
+msgid "metadata.duration"
+msgstr "Duration"
+
+msgid "metadata.durationValue"
+msgstr "{seconds}s"
+
+msgid "metadata.sampleRate"
+msgstr "Sample rate"
+
+msgid "metadata.sampleRateValue"
+msgstr "{hz} Hz"
+
+msgid "metadata.channels"
+msgstr "Channels"
+
+msgid "metadata.channelsMono"
+msgstr "Mono"
+
+msgid "metadata.channelsStereo"
+msgstr "Stereo"
+
+msgid "metadata.direction"
+msgstr "Direction"
