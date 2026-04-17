@@ -1,0 +1,101 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-04-16\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Lingui\n"
+"Language: en\n"
+
+msgid "app.name"
+msgstr "Wolof Translate"
+
+msgid "screen.main"
+msgstr "Main"
+
+msgid "screen.history"
+msgstr "History"
+
+msgid "screen.settings"
+msgstr "Settings"
+
+msgid "screen.devPanel"
+msgstr "Developer Panel"
+
+msgid "direction.english_to_wolof"
+msgstr "English → Wolof"
+
+msgid "direction.wolof_to_english"
+msgstr "Wolof → English"
+
+msgid "direction.press.english_to_wolof"
+msgstr "Press and hold to speak English"
+
+msgid "direction.press.wolof_to_english"
+msgstr "Press and hold to speak Wolof"
+
+msgid "stage.queued"
+msgstr "Queued"
+
+msgid "stage.normalizing"
+msgstr "Normalizing audio"
+
+msgid "stage.transcribing"
+msgstr "Transcribing"
+
+msgid "stage.translating"
+msgstr "Translating"
+
+msgid "stage.generating_speech"
+msgstr "Generating speech"
+
+msgid "stage.completed"
+msgstr "Done"
+
+msgid "stage.failed"
+msgstr "Failed"
+
+msgid "error.upload_failed"
+msgstr "Could not reach the server. Your recording is saved."
+
+msgid "error.poll_failed"
+msgstr "Lost connection while translating. Try again."
+
+msgid "error.server_failed"
+msgstr "The server could not finish your translation."
+
+msgid "error.client_timeout"
+msgstr "This is taking too long. Your recording is saved — try again."
+
+msgid "error.malformed_response"
+msgstr "Unexpected response from the server."
+
+msgid "error.microphone_denied"
+msgstr "Microphone access is needed to record. Open Settings to allow it."
+
+msgid "action.retry"
+msgstr "Retry"
+
+msgid "action.discard"
+msgstr "Discard"
+
+msgid "action.openSettings"
+msgstr "Open Settings"
+
+msgid "history.empty"
+msgstr "No translations yet. Hold a direction button on the main screen to start."
+
+msgid "history.replay"
+msgstr "Replay"
+
+msgid "history.delete"
+msgstr "Delete"
+
+msgid "a11y.directionButton"
+msgstr "Translate button"
+
+msgid "a11y.statusPill"
+msgstr "Current pipeline status"
+
+msgid "a11y.retryBanner"
+msgstr "Translation error"

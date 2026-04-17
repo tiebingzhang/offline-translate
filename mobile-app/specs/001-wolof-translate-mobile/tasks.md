@@ -26,18 +26,18 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 
 **Purpose**: Initialize the Expo SDK 55 + TypeScript project and configure all build/test tooling.
 
-- [ ] T001 Create Expo SDK 55 TypeScript scaffold at `mobile-app/` root: `npx create-expo-app@latest . --template blank-typescript`; pin `expo@55` in `mobile-app/package.json`
-- [ ] T002 [P] Install runtime dependencies in `mobile-app/package.json`: `expo-audio`, `expo-file-system`, `expo-speech`, `expo-haptics`, `expo-localization`, `expo-sqlite`, `expo-router`, `expo-linking`, `expo-document-picker`, `@react-native-async-storage/async-storage`, `zustand@5`, `@lingui/core`, `@lingui/react`
-- [ ] T003 [P] Install dev dependencies: `@lingui/cli`, `@lingui/macro`, `@lingui/metro-transformer`, `jest-expo`, `@testing-library/react-native@14`, `msw@2`, `fast-text-encoding`, `react-native-url-polyfill`, `eslint-config-expo`, `prettier`, `typescript@5`
-- [ ] T004 [P] Configure `mobile-app/tsconfig.json` with `strict: true`, `moduleResolution: "bundler"`, and `paths` alias `@/*` → `src/*`
-- [ ] T005 [P] Configure `mobile-app/app.json`: declare `expo-audio` config plugin with `microphonePermission` copy + `enableBackgroundPlayback: true`, declare `expo-localization`, declare `expo-router` entry
-- [ ] T006 [P] Create `mobile-app/app.config.ts` implementing per-EAS-profile `NSAppTransportSecurity` branching (dev-only `localhost` + `.local` exceptions) per `research.md` §5
-- [ ] T007 [P] Create `mobile-app/eas.json` with three profiles: `development` (simulator + ad-hoc, HTTP-enabled), `preview` (ad-hoc internal), `production` (TestFlight, TLS-only)
-- [ ] T008 [P] Create `mobile-app/metro.config.js` adding `@lingui/metro-transformer/expo` and appending `po` to `resolver.sourceExts`
-- [ ] T009 [P] Create `mobile-app/jest.config.js` with `preset: "jest-expo"`, `setupFilesAfterEach: ["./jest.setup.ts"]`, and `testPathIgnorePatterns` for `node_modules` + `ios`
-- [ ] T010 [P] Create `mobile-app/.env.example` and `mobile-app/.env.development` with `BFF_BASE_URL_DEV=http://<lan-ip>:8090` placeholder
-- [ ] T011 [P] Create `mobile-app/.eslintrc.json` extending `eslint-config-expo`; create `mobile-app/.prettierrc` with project defaults
-- [ ] T012 [P] Add `lingui.config.ts` at `mobile-app/` root: source locales `en`, catalogs dir `src/i18n/locales/<locale>`
+- [X] T001 Create Expo SDK 55 TypeScript scaffold at `mobile-app/` root: `npx create-expo-app@latest . --template blank-typescript`; pin `expo@55` in `mobile-app/package.json`
+- [X] T002 [P] Install runtime dependencies in `mobile-app/package.json`: `expo-audio`, `expo-file-system`, `expo-speech`, `expo-haptics`, `expo-localization`, `expo-sqlite`, `expo-router`, `expo-linking`, `expo-document-picker`, `@react-native-async-storage/async-storage`, `zustand@5`, `@lingui/core`, `@lingui/react`
+- [X] T003 [P] Install dev dependencies: `@lingui/cli`, `@lingui/macro`, `@lingui/metro-transformer`, `jest-expo`, `@testing-library/react-native@14`, `msw@2`, `fast-text-encoding`, `react-native-url-polyfill`, `eslint-config-expo`, `prettier`, `typescript@5`
+- [X] T004 [P] Configure `mobile-app/tsconfig.json` with `strict: true`, `moduleResolution: "bundler"`, and `paths` alias `@/*` → `src/*`
+- [X] T005 [P] Configure `mobile-app/app.json`: declare `expo-audio` config plugin with `microphonePermission` copy + `enableBackgroundPlayback: true`, declare `expo-localization`, declare `expo-router` entry
+- [X] T006 [P] Create `mobile-app/app.config.ts` implementing per-EAS-profile `NSAppTransportSecurity` branching (dev-only `localhost` + `.local` exceptions) per `research.md` §5
+- [X] T007 [P] Create `mobile-app/eas.json` with three profiles: `development` (simulator + ad-hoc, HTTP-enabled), `preview` (ad-hoc internal), `production` (TestFlight, TLS-only)
+- [X] T008 [P] Create `mobile-app/metro.config.js` adding `@lingui/metro-transformer/expo` and appending `po` to `resolver.sourceExts`
+- [X] T009 [P] Create `mobile-app/jest.config.js` with `preset: "jest-expo"`, `setupFilesAfterEach: ["./jest.setup.ts"]`, and `testPathIgnorePatterns` for `node_modules` + `ios`
+- [X] T010 [P] Create `mobile-app/.env.example` and `mobile-app/.env.development` with `BFF_BASE_URL_DEV=http://<lan-ip>:8090` placeholder
+- [X] T011 [P] Create `mobile-app/.eslintrc.json` extending `eslint-config-expo`; create `mobile-app/.prettierrc` with project defaults
+- [X] T012 [P] Add `lingui.config.ts` at `mobile-app/` root: source locales `en`, catalogs dir `src/i18n/locales/<locale>`
 - [ ] T013 [Commit] `001-wolof-translate-mobile:Phase1-Setup: initial Expo SDK 55 scaffold + tooling`
 
 **Checkpoint**: Scaffold compiles; `npm test` runs (no tests yet, exits 0); `npx expo start` shows blank dev-client.
@@ -48,27 +48,27 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 
 **Purpose**: Core cross-cutting modules required by every user story. No user-story work may start until this phase is complete.
 
-- [ ] T014 Create `mobile-app/jest.setup.ts`: register `msw/native` server, import `react-native-url-polyfill/auto` + `fast-text-encoding`, and add `jest.mock(...)` stubs for `expo-audio`, `expo-file-system`, `expo-file-system/legacy`, `expo-speech`, `expo-haptics`, `expo-sqlite`, `@react-native-async-storage/async-storage`, `expo-document-picker`
-- [ ] T015 Create `mobile-app/src/design/tokens.ts`: light + dark palettes (base `#f4efe6`, accent `#c8553d`, deep accent `#8b2e1b`, success `#1f6b4f` — plus secondary palette deep-indigo / ochre / muted-terracotta per `spec.md` FR-029 and `mobile_app_requirements.md` UX-10), spacing, radii, typography (SF Pro body, New York heading)
-- [ ] T016 [P] Create `mobile-app/src/i18n/index.ts`: Lingui initialization + `expo-localization.getLocales()` resolution; FR-037 fallback to `en`
-- [ ] T017 [P] Create `mobile-app/src/i18n/locales/en/messages.po` with initial string keys (directions, stages, errors, empty states, accessibility labels, retry banner copy)
-- [ ] T018 [P] Create `mobile-app/src/utils/casing.ts`: `toWire()` / `fromWire()` converters (snake_case ↔ camelCase) handling nested objects + arrays + primitives
-- [ ] T019 [P] Create `mobile-app/src/utils/__tests__/casing.test.ts`: unit coverage for flat, nested, arrays, null, and pass-through of unknown-shape values
-- [ ] T020 [P] Create `mobile-app/src/state/dev-log-store.ts`: Zustand circular buffer (capacity 500) with `append(entry)` (shifts oldest on overflow) and `clear()` actions; session-only (no `persist` middleware) per FR-015d
-- [ ] T021 [P] Create `mobile-app/src/utils/logger.ts`: `log(level, tag, message, meta?)` wrapper calling `useDevLogStore.getState().append`
-- [ ] T022 [P] Create `mobile-app/src/state/settings-store.ts`: Zustand with `persist` middleware over AsyncStorage (keys `wt.tapMode`, `wt.devModeEnabled`, `wt.backendUrlOverride`) per `data-model.md` §4
-- [ ] T023 Create `mobile-app/src/cache/db.ts`: `openDatabaseAsync("history.db")` + idempotent `CREATE TABLE IF NOT EXISTS` for `history` + `pending_jobs` + `idx_history_created_at_desc` per `data-model.md` §3; exposes a cached `getDb()` accessor
-- [ ] T024 [P] Create `mobile-app/src/api/bff-types.ts`: wire-level snake_case types (`UploadAcceptedWire`, `JobStateWire`, `JobResultWire`, `JobErrorWire`) per `contracts/bff-api.md` §§1–2
-- [ ] T025 [P] Create `mobile-app/src/audio/session.ts`: helpers `configureForRecording()` / `configureForPlayback()` calling `setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true/false })` + route-change + interruption subscription helpers
-- [ ] T026 [P] Create `mobile-app/src/pipeline/timeout.ts`: `computeTimeoutAtMs(startedAtMs, recordedDurationSec)` = `startedAtMs + (30 + recordedDurationSec) * 1000` (FR-020)
-- [ ] T027 [P] Create `mobile-app/src/pipeline/__tests__/timeout.test.ts`: unit tests (0 s → +30 s, 3 s → +33 s, 60 s → +90 s, boundary at exactly timeoutAtMs)
-- [ ] T028 [P] Create `mobile-app/src/pipeline/retry.ts`: poll-only backoff scheduler (`[1000, 3000, 9000]`, max 3 attempts) per FR-017a; exposes `nextDelayMs(attempt)` and `shouldGiveUp(attempt)`
-- [ ] T029 [P] Create `mobile-app/src/pipeline/__tests__/retry.test.ts`: unit tests for backoff sequence, exhaustion after attempt 3, and pass-through of non-transient errors
-- [ ] T030 Create `mobile-app/app/_layout.tsx`: `expo-router` Stack declaring `index` + `history` + modal routes `settings` and `dev-panel` (each with `presentation: "modal"` and `sheetAllowedDetents: [0.5, 1]`)
-- [ ] T031 Create `mobile-app/app/index.tsx` as a navigation-shell placeholder (renders localized "Main" string only)
-- [ ] T032 [P] Create `mobile-app/app/history.tsx` placeholder
-- [ ] T033 [P] Create `mobile-app/app/settings.tsx` placeholder
-- [ ] T034 [P] Create `mobile-app/app/dev-panel.tsx` placeholder
+- [X] T014 Create `mobile-app/jest.setup.ts`: register `msw/native` server, import `react-native-url-polyfill/auto` + `fast-text-encoding`, and add `jest.mock(...)` stubs for `expo-audio`, `expo-file-system`, `expo-file-system/legacy`, `expo-speech`, `expo-haptics`, `expo-sqlite`, `@react-native-async-storage/async-storage`, `expo-document-picker`
+- [X] T015 Create `mobile-app/src/design/tokens.ts`: light + dark palettes (base `#f4efe6`, accent `#c8553d`, deep accent `#8b2e1b`, success `#1f6b4f` — plus secondary palette deep-indigo / ochre / muted-terracotta per `spec.md` FR-029 and `mobile_app_requirements.md` UX-10), spacing, radii, typography (SF Pro body, New York heading)
+- [X] T016 [P] Create `mobile-app/src/i18n/index.ts`: Lingui initialization + `expo-localization.getLocales()` resolution; FR-037 fallback to `en`
+- [X] T017 [P] Create `mobile-app/src/i18n/locales/en/messages.po` with initial string keys (directions, stages, errors, empty states, accessibility labels, retry banner copy)
+- [X] T018 [P] Create `mobile-app/src/utils/casing.ts`: `toWire()` / `fromWire()` converters (snake_case ↔ camelCase) handling nested objects + arrays + primitives
+- [X] T019 [P] Create `mobile-app/src/utils/__tests__/casing.test.ts`: unit coverage for flat, nested, arrays, null, and pass-through of unknown-shape values
+- [X] T020 [P] Create `mobile-app/src/state/dev-log-store.ts`: Zustand circular buffer (capacity 500) with `append(entry)` (shifts oldest on overflow) and `clear()` actions; session-only (no `persist` middleware) per FR-015d
+- [X] T021 [P] Create `mobile-app/src/utils/logger.ts`: `log(level, tag, message, meta?)` wrapper calling `useDevLogStore.getState().append`
+- [X] T022 [P] Create `mobile-app/src/state/settings-store.ts`: Zustand with `persist` middleware over AsyncStorage (keys `wt.tapMode`, `wt.devModeEnabled`, `wt.backendUrlOverride`) per `data-model.md` §4
+- [X] T023 Create `mobile-app/src/cache/db.ts`: `openDatabaseAsync("history.db")` + idempotent `CREATE TABLE IF NOT EXISTS` for `history` + `pending_jobs` + `idx_history_created_at_desc` per `data-model.md` §3; exposes a cached `getDb()` accessor
+- [X] T024 [P] Create `mobile-app/src/api/bff-types.ts`: wire-level snake_case types (`UploadAcceptedWire`, `JobStateWire`, `JobResultWire`, `JobErrorWire`) per `contracts/bff-api.md` §§1–2
+- [X] T025 [P] Create `mobile-app/src/audio/session.ts`: helpers `configureForRecording()` / `configureForPlayback()` calling `setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true/false })` + route-change + interruption subscription helpers
+- [X] T026 [P] Create `mobile-app/src/pipeline/timeout.ts`: `computeTimeoutAtMs(startedAtMs, recordedDurationSec)` = `startedAtMs + (30 + recordedDurationSec) * 1000` (FR-020)
+- [X] T027 [P] Create `mobile-app/src/pipeline/__tests__/timeout.test.ts`: unit tests (0 s → +30 s, 3 s → +33 s, 60 s → +90 s, boundary at exactly timeoutAtMs)
+- [X] T028 [P] Create `mobile-app/src/pipeline/retry.ts`: poll-only backoff scheduler (`[1000, 3000, 9000]`, max 3 attempts) per FR-017a; exposes `nextDelayMs(attempt)` and `shouldGiveUp(attempt)`
+- [X] T029 [P] Create `mobile-app/src/pipeline/__tests__/retry.test.ts`: unit tests for backoff sequence, exhaustion after attempt 3, and pass-through of non-transient errors
+- [X] T030 Create `mobile-app/app/_layout.tsx`: `expo-router` Stack declaring `index` + `history` + modal routes `settings` and `dev-panel` (each with `presentation: "modal"` and `sheetAllowedDetents: [0.5, 1]`)
+- [X] T031 Create `mobile-app/app/index.tsx` as a navigation-shell placeholder (renders localized "Main" string only)
+- [X] T032 [P] Create `mobile-app/app/history.tsx` placeholder
+- [X] T033 [P] Create `mobile-app/app/settings.tsx` placeholder
+- [X] T034 [P] Create `mobile-app/app/dev-panel.tsx` placeholder
 - [ ] T035 [Commit] `001-wolof-translate-mobile:Phase2-Foundational: navigation shell, design tokens, i18n, stores, utilities, SQLite init`
 
 **Checkpoint**: Project boots, navigates between 4 blank routes; `npm test` runs foundation unit tests; Main screen shows localized placeholder.
