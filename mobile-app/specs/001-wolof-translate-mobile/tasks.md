@@ -38,7 +38,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T010 [P] Create `mobile-app/.env.example` and `mobile-app/.env.development` with `BFF_BASE_URL_DEV=http://<lan-ip>:8090` placeholder
 - [X] T011 [P] Create `mobile-app/.eslintrc.json` extending `eslint-config-expo`; create `mobile-app/.prettierrc` with project defaults
 - [X] T012 [P] Add `lingui.config.ts` at `mobile-app/` root: source locales `en`, catalogs dir `src/i18n/locales/<locale>`
-- [ ] T013 [Commit] `001-wolof-translate-mobile:Phase1-Setup: initial Expo SDK 55 scaffold + tooling`
+- [X] T013 [Commit] `001-wolof-translate-mobile:Phase1-Setup: initial Expo SDK 55 scaffold + tooling`
 
 **Checkpoint**: Scaffold compiles; `npm test` runs (no tests yet, exits 0); `npx expo start` shows blank dev-client.
 
@@ -69,7 +69,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T032 [P] Create `mobile-app/app/history.tsx` placeholder
 - [X] T033 [P] Create `mobile-app/app/settings.tsx` placeholder
 - [X] T034 [P] Create `mobile-app/app/dev-panel.tsx` placeholder
-- [ ] T035 [Commit] `001-wolof-translate-mobile:Phase2-Foundational: navigation shell, design tokens, i18n, stores, utilities, SQLite init`
+- [X] T035 [Commit] `001-wolof-translate-mobile:Phase2-Foundational: navigation shell, design tokens, i18n, stores, utilities, SQLite init`
 
 **Checkpoint**: Project boots, navigates between 4 blank routes; `npm test` runs foundation unit tests; Main screen shows localized placeholder.
 
