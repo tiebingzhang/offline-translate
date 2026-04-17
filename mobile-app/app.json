@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Wolof Translate",
+    "slug": "wolof-translate",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "wolof-translate",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f4efe6"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cryingaffrica.wolofTranslate"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Wolof Translate to access your microphone for translation.",
+          "enableBackgroundPlayback": true,
+          "enableBackgroundRecording": false
+        }
+      ],
+      "expo-router",
+      "expo-localization"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

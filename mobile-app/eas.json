@@ -1,0 +1,43 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "preview"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "PLACEHOLDER"
+      }
+    }
+  }
+}
