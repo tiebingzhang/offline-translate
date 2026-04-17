@@ -20,6 +20,10 @@
 - Q: How does the app behave if the user presses a direction control while a previous translation is still in flight? → A: **Block**. While any pipeline phase (upload, polling, or auto-retry) is active, both direction controls MUST be visibly disabled. No queueing, no cancel-and-restart, no concurrent jobs in v1.
 - Q: Where does the push-to-talk alternative mode toggle (FR-028) live, given the UI architecture has no settings surface? → A: **App bar gear icon → in-app modal Settings sheet**. The sheet hosts the Tap-mode toggle in v1 and is the canonical home for any future user-facing preferences (locale override, bulk history delete, etc.). Settings are accessible to all users; not gated behind developer mode.
 
+### Session 2026-04-17
+
+- Q: The BFF currently rejects every mobile upload with *"must be a WAV file"* because `normalize_audio_for_whisper` is WAV-only. Previously the AAC/m4a ingestion work was tracked cross-session as "BE-2" in `mobile_app_implementation_plan.md`. Should BE-2 stay out-of-session or fold into this spec? → A: **Fold BE-2 into the current session.** The mobile-app and BFF share a single git repo (`offline-translate/` with `mobile-app/` as a subdir), so the `001-wolof-translate-mobile` branch already covers both surfaces — no cross-repo coordination cost. Added as FR-038 with an in-scope implementation recipe (PyAV, in-memory transcoding, no system `ffmpeg`). The spec's prior "separate, coordinated effort" wording under §Assumptions and §Dependencies is superseded.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Speak a phrase, hear it translated (Priority: P1)
@@ -517,6 +521,37 @@ recognizably inspired by West African design, not generic stock.
   the device locale has no matching translation, the app MUST fall back
   to English without visible errors.
 
+**Back-end changes in this session (in-scope; was previously tracked cross-session as "BE-2")**
+
+- **FR-038**: The back-end-for-frontend (`web_server.py` in the
+  `offline-translate` repo, which shares a git root with this mobile-app
+  tree) MUST accept compressed audio uploads from the mobile client.
+  Specifically:
+  - **FR-038a (accepted formats)**: The BFF MUST accept AAC in an MP4
+    container (`.m4a`, `audio/m4a`) from the mobile client as a
+    first-class upload format, in addition to the existing PCM WAV
+    accepted today.
+  - **FR-038b (in-memory transcoding)**: On receipt of a non-WAV
+    upload, the BFF MUST transcode the payload to 16 kHz mono PCM WAV
+    in memory before the existing `normalize_audio_for_whisper`
+    pipeline runs. The implementation MUST use the PyAV (`av`) Python
+    package, which ships pre-built wheels and bundles FFmpeg — no
+    system `ffmpeg` binary may be required on the deployment host.
+    Rationale for PyAV is recorded in `mobile_app_implementation_plan.md`
+    §4 BE-2 and Decision D-2.
+  - **FR-038c (backward compatibility)**: Existing WAV uploads from
+    the desktop web app (`webapp/`) MUST continue to work unchanged.
+    The transcoding path MUST only activate when `sniff_audio_format`
+    returns a non-`wav` result; the legacy WAV pipeline MUST remain
+    on its existing code path.
+  - **FR-038d (error surfaces)**: If transcoding fails (corrupt
+    container, unsupported codec, empty stream), the BFF MUST set the
+    job's `status` to `failed` with a specific, descriptive
+    `error.message` (e.g., *"Audio container could not be decoded by
+    PyAV: <reason>"*) so the developer-mode panel (FR-015c) exposes
+    it verbatim and the client's existing `server_failed` error path
+    (FR-018) renders a user-readable failure.
+
 ### Key Entities *(include if feature involves data)*
 
 - **Translation Request**: represents one user attempt. Holds the
@@ -571,6 +606,13 @@ recognizably inspired by West African design, not generic stock.
   translation back-end**. (Apple's built-in OS/TestFlight crash
   reporting pipeline is not considered third-party analytics and is
   permitted.)
+- **SC-012** (FR-038): With the BFF's PyAV transcoding path enabled,
+  a live AAC/m4a upload from the iOS simulator or a physical iPhone
+  (48 kbps mono 16 kHz) MUST complete an end-to-end translation
+  round-trip against the running BFF without falling back to `status:
+  failed`, and MUST produce whisper transcription accuracy within 5%
+  word-error-rate of the same utterance sent as PCM WAV (baseline
+  recorded in `mobile_app_implementation_plan.md` §5.1 / §TC-1).
 
 ## Assumptions
 
@@ -578,11 +620,14 @@ recognizably inspired by West African design, not generic stock.
   `/Users/m849876/workspace/crying-affrica/offline-translate` (the BFF
   and its downstream speech/translation services) are the single source
   of truth for translation pipeline behavior. The mobile client consumes
-  their existing network API surface and does **not** define its own contract.
-- The back-end will be extended (in a separate, coordinated effort) to
-  accept compressed audio uploads so the mobile client does not need to
-  upload uncompressed waveforms. Until that extension lands, core
-  functionality may depend on it (blocking risk noted below).
+  their existing network API surface. Per FR-038 (added 2026-04-17) a
+  single, narrow BFF extension — AAC/m4a ingestion via in-memory PyAV
+  transcoding — is now **in scope for this session**. No other part of
+  the BFF contract is redefined by the mobile client.
+- The mobile-app tree and the BFF (`web_server.py`) live in the same
+  git repository, so FR-038's BFF change is carried on the same
+  `001-wolof-translate-mobile` feature branch as the mobile work. No
+  cross-repo coordination is required.
 - No user accounts, sign-in, or per-user data model are in scope for
   this feature; the product is single-user per device.
 - Distribution in v1 is limited to an internal / beta channel; public
@@ -600,10 +645,11 @@ recognizably inspired by West African design, not generic stock.
 
 ## Dependencies
 
-- **Back-end compressed-audio ingestion**: the back-end must accept a
-  modern compressed audio format from the mobile client. Without this,
-  the core translation round-trip (US1) cannot work as specified and
-  the feature is blocked.
+- **Back-end compressed-audio ingestion**: the back-end must accept
+  AAC/m4a from the mobile client. **Now in-scope for this session as
+  FR-038** (formerly tracked as cross-session "BE-2"). Until FR-038 is
+  implemented, the core translation round-trip (US1) cannot complete
+  against the running BFF and the feature remains blocked.
 - **Reachable back-end endpoint**: the app assumes a reachable
   development endpoint for local iteration and a reachable TLS-protected
   endpoint for release builds. Hosting/DNS for the latter is outside the

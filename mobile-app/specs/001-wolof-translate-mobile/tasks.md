@@ -116,7 +116,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T060 [P] [US1] Create `mobile-app/maestro/flows/us1-timeout.yaml`: enable dev mode, set BFF URL to an unreachable host, record 5 s phrase, assert `RetryBanner` appears within 35 s (30 s base + 5 s audio per FR-020)
 - [X] T061 [Commit] `001-wolof-translate-mobile:Phase3-US1: MVP round-trip translation`
 
-**Checkpoint — MVP**: US1 works end-to-end against a real BFF (with BE-1+BE-2 landed). Contract tests pass. Maestro US1 flows green. Demo-ready.
+**Checkpoint — MVP**: US1 works end-to-end against a real BFF. Contract tests pass. Maestro US1 flows green. Demo-ready. **Note (2026-04-17)**: full end-to-end audio playback on `english_to_wolof` also requires BE-1 (download endpoint, cross-session) and FR-038 (BFF AAC/m4a ingestion — tasks T136–T143 below in this same phase).
 
 ---
 
@@ -149,6 +149,32 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T135 [Commit] `001-wolof-translate-mobile:Phase3-US1-FR003a: persistent pipeline status bar (step label + countdown)`
 
 **Checkpoint — FR-003a**: Bottom status bar visible throughout an in-flight translation, label matches the FR-003a vocabulary at every transition, countdown decrements at 1 Hz and clamps to zero on timeout. No BFF change required; Back-end scope gate remains CLEARED.
+
+---
+
+### FR-038 increment — BFF AAC/m4a ingestion (BE-2 folded in-session, 2026-04-17)
+
+**Goal**: Extend the BFF (`web_server.py`) to accept AAC-in-m4a uploads from the mobile client via in-memory PyAV transcoding, unblocking every live US1 round-trip from iOS. Closes the production bug where the simulator fails with `"The server could not finish your translation."` because `normalize_audio_for_whisper` rejects non-WAV uploads.
+
+**Scope**: BFF-side only, carried on the same `001-wolof-translate-mobile` branch (single-git-root; see `plan.md` Constitution V amendment). No mobile-app source changes. No network-contract redefinition — the endpoint signature, response shape, and error envelope are all superset-compatible (`plan.md` §FR-038 Design Detail). Principle VIII (UI Mock-First) does not apply — no UI surface.
+
+**Independent Test**: With the BFF restarted against the amended `web_server.py` and a newly `pip install -e .`'d `av` dependency, a live recording from the iOS simulator completes an end-to-end English→Wolof translation round-trip (transcribed text, translated text, and playback audio all visible/audible), and the existing desktop webapp at `http://127.0.0.1:8090/` continues to complete WAV-based translations unchanged.
+
+#### Tests (TDD — Constitution II; authored BEFORE implementation)
+
+- [ ] T136 [P] [US1] Capture three audio fixtures under `tests/fixtures/audio/` in the parent `offline-translate/` tree: `ios_sim_3s.m4a` (3 s English phrase from the iOS simulator recorder output — record once via the dev-mode "Preview" button or by hand-capturing the Documents dir), `ios_sim_10s.m4a` (10 s phrase, same source), and `malformed_moov.m4a` (a synthetically truncated MP4 container — e.g., first 32 bytes of any m4a then random padding — to drive the FR-038d error path). Check all three into git (they are tiny — <100 KB each).
+- [ ] T137 [P] [US1] Create `tests/test_transcode.py` in the parent `offline-translate/` tree with three pytest cases matching `plan.md` §FR-038 Design Detail verbatim: (a) **happy path (FR-038a/b)** — `transcode_to_wav(ios_sim_3s.m4a bytes)` returns bytes whose first 4 are `RIFF` and bytes 8–12 are `WAVE`; passing the output through the existing `_read_wav_samples(...)` yields a `(samples, 16000)` tuple with `samples.shape[1] == 1`; (b) **WAV bypass regression (FR-038c)** — call `normalize_audio_for_whisper(wav_bytes, "webapp.wav")` where `wav_bytes` is a 1-second silent 16 kHz mono PCM WAV produced by `_encode_pcm16_wav(np.zeros(16_000, dtype=np.float32), 16_000)`; assert the function completes without invoking `transcode_to_wav` (use `monkeypatch` on the `av.open` symbol and assert it was never called) and returns 16 kHz mono PCM WAV; (c) **malformed-container error (FR-038d)** — `pytest.raises(RuntimeError, match="could not be decoded by PyAV")` when `transcode_to_wav(malformed_moov.m4a bytes)` is called.
+
+#### Implementation
+
+- [ ] T138 [US1] Add `av ~= 13.1` to the `[project].dependencies` array in `offline-translate/pyproject.toml` (or the equivalent `requirements.txt` block if pyproject is not yet in use). Record the PyAV release-notes link and the pinned minor version in a comment. Run `pip install -e .` and confirm the pre-built wheel installs on macOS arm64 without any system `ffmpeg-dev` package required.
+- [ ] T139 [US1] Implement the `transcode_to_wav(audio_bytes: bytes) -> bytes` helper in `offline-translate/web_server.py` (placed immediately above `normalize_audio_for_whisper`) exactly per the body in `plan.md` §FR-038 Design Detail — auto-detect container via `av.open(BytesIO, format=None)`, pick the first audio stream, resample to `s16` / `mono` / `16_000` via `av.AudioResampler`, flush with `resampler.resample(None)`, reuse the existing `_encode_pcm16_wav(...)` helper. Raise `RuntimeError` with the descriptive messages specified in FR-038d for: container-open failures, no-audio-stream, empty-decoded-stream. (Satisfies T137a and T137c.)
+- [ ] T140 [US1] Amend `offline-translate/web_server.py::normalize_audio_for_whisper` (currently at `web_server.py:206-208`): replace the `raise RuntimeError(f"Audio upload {input_filename!r} must be a WAV file.")` line with `audio_bytes = transcode_to_wav(audio_bytes)`; everything downstream of that line stays untouched. Preserve the `sniff_audio_format(audio_bytes) != "wav"` guard — the transcoding call only fires on non-WAV inputs, so the webapp's existing WAV path bypasses it byte-identically (satisfies T137b).
+- [ ] T141 [P] [US1] Deployment sanity in `deploy-dev.md` (parent repo): append a one-line note that restarting the BFF now requires `pip install -e .` to pull the new `av` dependency; document the `sha256` of the installed `av` wheel for M0 baseline per `mobile_app_implementation_plan.md` R-9 mitigation.
+- [ ] T142 [US1] End-to-end SC-012 acceptance: with the amended BFF running on `http://127.0.0.1:8090`, launch the iOS simulator, point it at the Mac host (`.env.development` already has the correct BFF URL), record a 3-second English phrase via the Main screen, and confirm: (i) the upload completes (no `error.server_failed` retry banner), (ii) the `PipelineStatusBar` progresses through transcribing/translating/generating stages, (iii) translated Wolof audio plays back, (iv) the transcribed English and translated Wolof text both render, (v) the history cache gains one entry visible on the History screen. Record the observed word-error-rate for the test utterance against its PCM WAV counterpart and confirm ≤ 5% regression per SC-012.
+- [ ] T143 [Commit] `001-wolof-translate-mobile:Phase3-FR038-BE2: PyAV transcoding on BFF upload path`
+
+**Checkpoint — FR-038 / SC-012**: iOS simulator (and physical iPhone) translation round-trip completes against the running BFF with AAC/m4a uploads; webapp WAV flow regressed-test green; no change to the mobile network contract. Unblocks the MVP checkpoint above (which explicitly depended on "BE-2 landed").
 
 ---
 
@@ -314,7 +340,7 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 
 - **Phase 1 Setup** — no dependencies.
 - **Phase 2 Foundational** — depends on Phase 1 complete; blocks all user stories.
-- **Phase 3 US1 (P1)** — depends on Phase 2. The MVP path.
+- **Phase 3 US1 (P1)** — depends on Phase 2. The MVP path. Now contains two additive sub-increments under the same phase: **FR-003a** (persistent pipeline status bar) and **FR-038** (BFF AAC/m4a ingestion, BE-2 folded in-session, 2026-04-17). FR-038 tasks (T136–T143) carry the mobile-app's dependency on BE-2 in the same feature branch — no cross-repo work.
 - **Phase 4 US2 (P2)** — depends on Phase 2; logically chains after US1 for end-to-end demo purposes, but US2 tasks can start in parallel if staffed.
 - **Phase 5 US4 (P2)** — depends on Phase 3 US1 (reuses retry + timeout + interruption code paths).
 - **Phase 6 US3 (P3)** — depends on Phase 2; can start in parallel with US2/US4 if staffed.
@@ -348,7 +374,7 @@ Each user story MUST complete its `[M]` approval gate before any of that story's
 
 ### Cross-repo dependency
 
-BE-1 and BE-2 (in the parent `offline-translate` repo) block the US1 success scenarios — specifically T059 end-to-end. If BE-1/BE-2 are not yet landed when Phase 3 begins, US1 implementation can proceed fully (contract tests stub the BE behavior via MSW), but the E2E Maestro flow T059 will not pass until BE-1/BE-2 ship. Flag this with the user at T061.
+**Amended 2026-04-17**: BE-1 remains a cross-session prerequisite (download endpoint `GET /api/requests/{id}/audio` + `audio_url` field) that blocks US2 offline replay of downloaded Wolof audio. **BE-2 is no longer cross-repo** — folded into this session as FR-038 / Phase 3 tasks T136–T143 (same git root, same feature branch). If BE-1 is not yet landed when Phase 3 begins, US1 implementation can proceed fully (MSW stubs the BE-1 behavior via contract tests) and Phase 4 US2 persists `english_to_wolof` entries through the TTS-fallback path added in T075c; the E2E Maestro flow T059's audio-playback assertion remains gated on BE-1. Flag this with the user at T061.
 
 ---
 
@@ -374,8 +400,8 @@ Then sequentially implement T047 → T048/T049/T051 (parallel) → T050 → T052
 
 ### MVP first (fastest path to a demo)
 
-1. Phase 1 Setup → Phase 2 Foundational → Phase 3 US1 end-to-end.
-2. STOP at T061; validate on a physical iPhone against a running BFF with BE-1+BE-2.
+1. Phase 1 Setup → Phase 2 Foundational → Phase 3 US1 core (T036–T061) → Phase 3 FR-003a (T125–T135) → Phase 3 FR-038 (T136–T143).
+2. STOP after T143; validate on a physical iPhone against a running BFF. BE-1 (cross-session) is still required for `english_to_wolof` audio playback end-to-end.
 3. Demo US1; gather feedback before moving on.
 
 ### Incremental delivery (recommended for solo dev)
@@ -401,6 +427,6 @@ Then sequentially implement T047 → T048/T049/T051 (parallel) → T050 → T052
 - `[M]` tasks pause execution pending explicit user approval — do NOT proceed to the next task in the same story until the user records approval.
 - `[Commit]` tasks require user approval before invoking `git commit` (Constitution VI).
 - Each commit message follows `001-wolof-translate-mobile:<Phase>: <description>`.
-- Every task's implementation file belongs to `mobile-app/` or `specs/001-wolof-translate-mobile/` — no task touches the parent `offline-translate/` repo.
+- Every task's implementation file belongs to `mobile-app/` or `specs/001-wolof-translate-mobile/`, **with one exception**: the FR-038 (BE-2) tasks T136–T143 touch `offline-translate/web_server.py`, `offline-translate/pyproject.toml`, `offline-translate/tests/`, and `offline-translate/deploy-dev.md`. This is covered by the Constitution V amendment in `plan.md` — the mobile-app tree and `offline-translate/` share the same git root, so those files are on the same `001-wolof-translate-mobile` feature branch.
 - Comments added to source MUST carry the `(001-wolof-translate-mobile:<TaskID>)` suffix (Constitution IV) — example: `// Honor pollAfterMs from the BFF (001-wolof-translate-mobile:T047)`.
 - Tests are mandatory for BFF contract surfaces (Constitution II); verify that each contract test FAILS on first write before the matching implementation task begins.
