@@ -50,6 +50,7 @@ jest.mock('expo-speech', () => ({
 jest.mock('expo-haptics', () => ({
   impactAsync: jest.fn(async () => {}),
   notificationAsync: jest.fn(async () => {}),
+  selectionAsync: jest.fn(async () => {}),
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
@@ -109,10 +110,4 @@ jest.mock('expo-linking', () => ({
 
 jest.mock('expo-localization', () => ({
   getLocales: jest.fn(() => [{ languageCode: 'en', languageTag: 'en-US', regionCode: 'US' }]),
-}));
-
-jest.mock('expo-haptics', () => ({
-  impactAsync: jest.fn(async () => {}),
-  selectionAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
 }));
