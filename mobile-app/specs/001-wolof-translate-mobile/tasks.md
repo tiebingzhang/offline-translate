@@ -114,9 +114,41 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 - [X] T058 [US1] Implement FR-006a cold-start resume hook in `mobile-app/app/_layout.tsx`: on mount, call `pendingJobsRepo.resumeAll()`; for each live row, enter `pipeline-store` `polling` state using the stored `request_id` and re-enter polling (no re-upload)
 - [X] T059 [P] [US1] Create `mobile-app/maestro/flows/us1-happy-path.yaml`: launch → wait for Main → long-press English→Wolof button 3 s → assert transcribed text visible, translated text visible, playback indicator active within SC-001 bounds
 - [X] T060 [P] [US1] Create `mobile-app/maestro/flows/us1-timeout.yaml`: enable dev mode, set BFF URL to an unreachable host, record 5 s phrase, assert `RetryBanner` appears within 35 s (30 s base + 5 s audio per FR-020)
-- [ ] T061 [Commit] `001-wolof-translate-mobile:Phase3-US1: MVP round-trip translation`
+- [X] T061 [Commit] `001-wolof-translate-mobile:Phase3-US1: MVP round-trip translation`
 
 **Checkpoint — MVP**: US1 works end-to-end against a real BFF (with BE-1+BE-2 landed). Contract tests pass. Maestro US1 flows green. Demo-ready.
+
+---
+
+### FR-003a increment — Persistent pipeline status bar (additive US1 extension, 2026-04-17)
+
+**Goal**: Add a bottom-pinned status bar that shows a direction-aware plain-language step label plus a live whole-second countdown of the FR-020 timeout budget.
+
+**Scope gate**: Client-only per `plan.md` § VIII-addendum and `contracts/bff-api.md` §7. No BFF contract change. If any task below surfaces a need for a BFF change, halt and obtain explicit user approval per `spec.md` FR-003a Back-end scope gate.
+
+**Independent Test**: With US1 working, start a translation and confirm at each phase that (a) the bottom bar is visible with the correct plain-language label matching `spec.md` FR-003a vocabulary, (b) the countdown decrements once per second and never displays below zero, (c) on terminal state the bar holds the final label and the countdown stops updating, and (d) VoiceOver reads both label and "X seconds remaining" per FR-025.
+
+#### Mock-first UI (Constitution VIII — gate on [M] before implementation)
+
+- [ ] T125 [US1] Create `mobile-app/src/components/PipelineStatusBar.tsx` as a visual mock: bottom-pinned row rendering a fixture-prop `stepLabelKey` (e.g., `'step.transcribing.english'`) + `secondsLeft: number` + `visible: boolean`; localized via `src/i18n`; no store wiring; mock covers all 15 i18n keys enumerated in `plan.md` §FR-003a Design Detail
+- [ ] T126 [US1] Update `mobile-app/app/index.tsx` to mount the mock `PipelineStatusBar` pinned to the bottom safe-area inset behind a dev-fixture cycler that walks through the 13 representative `(phase, backendStage, direction)` states (idle hidden, uploading, queued, normalizing, transcribing.english, transcribing.wolof, translating.english_to_wolof, translating.wolof_to_english, generating_wolof_audio, playing, retrying, timed_out, failed); add `ScrollView.contentContainerStyle.paddingBottom` ≥ bar height so direction buttons remain fully reachable
+- [ ] T127 [M] [US1] MANUAL: User reviews and approves the mock `PipelineStatusBar` — copy of every state, direction-aware phrasing, countdown format (e.g., `"33s remaining"` vs bare `"33"`), visual weight relative to the header `StatusPill`, bottom-inset placement in light + dark modes, reduce-motion behavior. No FR-003a implementation task below starts until approval is recorded here.
+
+#### Tests (TDD — Constitution II)
+
+- [ ] T128 [P] [US1] Create `mobile-app/src/pipeline/__tests__/step-label.test.ts` — exhaustive `(phase × backendStage × direction)` table asserting each branch in `plan.md` §FR-003a Design Detail maps to the correct `step.*` MessageKey; include null-direction fallback (phase=polling + direction=null → default queued) and null-stage fallback during polling
+- [ ] T129 [P] [US1] Create `mobile-app/src/components/__tests__/PipelineStatusBar.test.tsx` — (a) snapshot at 5 representative states (idle → renders null; uploading; polling+transcribing+english_to_wolof; playing; timed_out); (b) countdown tick: mount with `timeoutAtMs = now + 5000`, advance fake timers by 1 s × 5, assert display decrements `5 → 4 → 3 → 2 → 1 → 0` and holds at 0 (never goes negative); (c) terminal freeze: transition `phase` to `completed`, assert the interval is cleared and display no longer changes; (d) accessibility: `accessibilityLabel` contains the localized step + "seconds remaining" per FR-025
+
+#### Implementation
+
+- [ ] T130 [P] [US1] Extend `mobile-app/src/i18n/locales/en/messages.po` and `mobile-app/src/i18n/locales/en/messages.ts` with the 15 FR-003a step keys (`step.idle`, `step.uploading`, `step.queued`, `step.normalizing`, `step.transcribing.english`, `step.transcribing.wolof`, `step.translating.english_to_wolof`, `step.translating.wolof_to_english`, `step.generating_wolof_audio`, `step.playing`, `step.retrying`, `step.timed_out`, `step.failed`, `step.countdown`, `step.a11y`) with English copy from `plan.md` §FR-003a Design Detail
+- [ ] T131 [US1] Implement `mobile-app/src/pipeline/step-label.ts` — pure function `stepLabel({ phase, backendStage, direction }): MessageKey` implementing the resolution table in `plan.md` §FR-003a Design Detail; no side effects, no store access; direction-aware branches for `transcribing` and `translating`; English→Wolof-only branch for `generating_speech` → `step.generating_wolof_audio` (satisfies T128)
+- [ ] T132 [US1] Implement `mobile-app/src/components/PipelineStatusBar.tsx` — consume `usePipelineStore` selectors for `phase`, `backendStage`, `direction`, `timeoutAtMs`; resolve label via `stepLabel(...)`; run `useEffect` that starts `setInterval(1000)` computing `secondsLeft = Math.max(0, Math.ceil((timeoutAtMs - Date.now()) / 1000))`; clear interval on terminal phase or unmount; render null when `phase === 'idle'`; compose `accessibilityLabel` via the `step.a11y` ICU-interpolated message; honor `AccessibilityInfo.isReduceMotionEnabled()` per FR-032 (no animated state transitions when reduce-motion is on) (satisfies T129)
+- [ ] T133 [US1] Wire `mobile-app/app/index.tsx` to the live `PipelineStatusBar`: replace the fixture cycler from T126 with the production component; keep the existing header `StatusPill` unchanged; preserve the T040-approved composition of `DirectionButton` + `StatusPill` + `MetadataGrid` + result text; ensure `paddingBottom` continues to reserve space for the bar when `phase !== 'idle'`
+- [ ] T134 [P] [US1] Extend `mobile-app/maestro/flows/us1-happy-path.yaml` with three assertions mid-flight: (a) `id: PipelineStatusBar` is visible, (b) visible text matches one of the expected localized `step.*` strings during the polling window, (c) the countdown numeric value strictly decreases between two sampled `extendedWaitUntil` checks
+- [ ] T135 [Commit] `001-wolof-translate-mobile:Phase3-US1-FR003a: persistent pipeline status bar (step label + countdown)`
+
+**Checkpoint — FR-003a**: Bottom status bar visible throughout an in-flight translation, label matches the FR-003a vocabulary at every transition, countdown decrements at 1 Hz and clamps to zero on timeout. No BFF change required; Back-end scope gate remains CLEARED.
 
 ---
 
@@ -283,6 +315,7 @@ description: "Task list for the Wolof Translate Mobile Client (iOS v1)"
 Each user story MUST complete its `[M]` approval gate before any of that story's implementation tasks begin:
 
 - US1: T040 must be `[M]` approved → T041–T061 may proceed.
+- US1 FR-003a extension: T127 must be `[M]` approved → T128–T135 may proceed. (Independent of the earlier US1 gate — T127 is a fresh UI-bearing surface per Constitution VIII.)
 - US2: T065 must be `[M]` approved → T066–T075 may proceed.
 - US3: T088 must be `[M]` approved → T089–T098 may proceed.
 - US4: T077 must be `[M]` approved → T078–T084 may proceed.

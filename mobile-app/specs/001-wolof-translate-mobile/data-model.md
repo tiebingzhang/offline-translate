@@ -239,7 +239,20 @@ No other keys are read or written. Migration strategy: unknown keys are ignored;
 | `timeoutAtMs` | `startedAtMs + (30 + recordedDurationSec) * 1000` | FR-020 |
 | `nextPollDelayMs` on auto-retry | `[1000, 3000, 9000][pollAttempt - 1]` | FR-017a |
 | `directionLabel` | i18n catalog keys `direction.english_to_wolof` / `direction.wolof_to_english` | FR-035 |
-| `stageLabel` | i18n catalog keys `stage.normalizing`, `stage.transcribing`, `stage.translating`, `stage.generating_speech` | FR-003 / SC-006 |
+| `stageLabel` (header pill) | i18n catalog keys `stage.normalizing`, `stage.transcribing`, `stage.translating`, `stage.generating_speech` | FR-003 / SC-006 |
+| `stepLabel` (bottom status bar) | `src/pipeline/step-label.ts` pure function over `(phase, backendStage, direction)` → i18n key in the `step.*` namespace (15 keys; see `plan.md` §FR-003a Design Detail) | **FR-003a** |
+| `secondsLeft` (bottom status bar) | `Math.max(0, Math.ceil((timeoutAtMs - now) / 1000))`; recomputed at 1 Hz by `PipelineStatusBar` via `setInterval`; interval cleared on terminal phase | **FR-003a** |
+
+**FR-003a inputs — sourcing**. The two derived values consumed by `PipelineStatusBar` read exclusively from already-modelled state:
+
+| Input | Store field | Set by |
+|---|---|---|
+| `phase` | `usePipelineStore.phase` | Reducer (`state-machine.ts`) — every phase transition |
+| `backendStage` | `usePipelineStore.backendStage` | Reducer on `pollStage` action — every poll frame |
+| `direction` | `usePipelineStore.direction` | Reducer on `pressStart` |
+| `timeoutAtMs` | `usePipelineStore.timeoutAtMs` | Reducer on `pressRelease` via `computeTimeoutAtMs` (FR-020) |
+
+No new store, no new persisted field, no new BFF wire field. The status bar is a read-only view of existing state.
 
 ---
 

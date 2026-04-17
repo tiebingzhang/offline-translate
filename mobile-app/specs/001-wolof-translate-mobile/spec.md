@@ -62,6 +62,15 @@ back-end services and the evaluator's device network.
 5. **Given** the user is mid-playback of translated audio, **When** they lock
    the screen or switch to another app, **Then** the audio continues playing
    until it ends naturally or they stop it.
+6. **Given** a translation is in flight (upload, polling, auto-retry, or
+   playback), **When** the user looks at the bottom of the main screen,
+   **Then** they see a persistent status bar showing (a) the current
+   pipeline step in plain language (e.g., "Uploading recording",
+   "Transcribing English audio to text", "Translating English to Wolof",
+   "Generating Wolof audio", "Playing translation") and (b) a live
+   countdown, in seconds, of the remaining FR-020 timeout budget,
+   decrementing once per second until the pipeline reaches a terminal
+   state or the countdown hits zero.
 
 ---
 
@@ -237,7 +246,10 @@ recognizably inspired by West African design, not generic stock.
   `processing` past the FR-020 client-side bound (30 s + 1 s per
   second of recorded audio). The app MUST treat the job as failed at
   that bound, preserve the captured audio, and surface the retry
-  affordance so the user can re-submit without re-recording.
+  affordance so the user can re-submit without re-recording. The
+  FR-003a status bar MUST, at that moment, switch its label to
+  "Timed out" and hold the countdown at zero rather than going
+  negative or wrapping.
 - **Storage pressure for history cache**: device storage is near full. The
   cache must not grow unbounded; eviction must continue to work and must
   never cause a crash on write.
@@ -289,6 +301,49 @@ recognizably inspired by West African design, not generic stock.
 - **FR-003**: The app MUST upload the recorded audio to the existing
   translation back-end and MUST display the ongoing pipeline stage to the
   user in plain language until a terminal state is reached.
+- **FR-003a**: The app MUST render a persistent pipeline status bar,
+  pinned to the bottom of the main screen, visible for the entire
+  duration of an in-flight translation (from upload start through a
+  terminal state — completed, failed, or client-side timeout per
+  FR-020 — and through any subsequent FR-004 playback of the result).
+  The status bar MUST convey BOTH of the following simultaneously:
+  a. **Current step label** — the active pipeline stage expressed in
+     plain language, localized per FR-035. The label MUST be derived
+     from the back-end `stage` field when polling (FR-004) and from
+     the client phase otherwise (upload, retry, playback). The label
+     vocabulary MUST include at minimum: "Uploading recording",
+     "Transcribing English audio to text" / "Transcribing Wolof audio
+     to text" (direction-aware), "Translating English to Wolof" /
+     "Translating Wolof to English" (direction-aware), "Generating
+     Wolof audio" (English → Wolof only), "Playing translation",
+     "Retrying…", "Timed out", "Failed".
+  b. **Timeout countdown** — the remaining time in the FR-020
+     end-to-end budget, expressed in whole seconds, decrementing
+     once per second and never displayed below zero. The countdown
+     MUST reset on each new translation (FR-021 discard or FR-002
+     new recording) and MUST stop updating once the pipeline reaches
+     a terminal state.
+  The status bar MUST be hidden (or collapsed to an unobtrusive idle
+  affordance) when no pipeline is in flight, MUST NOT obscure or
+  displace the primary direction controls (FR-001), and MUST comply
+  with FR-024 (light/dark), FR-025 (screen-reader label conveying
+  step + seconds remaining), FR-026 (dynamic type), and FR-032
+  (reduce-motion).
+
+  **Back-end scope gate (NON-NEGOTIABLE for this requirement)**:
+  FR-003a is intended to be a **client-only** feature. The current
+  BFF contract (`contracts/bff-api.md`) already exposes
+  `stage`, `stage_detail`, and `direction` on every poll response,
+  and the FR-020 timeout is computed client-side — these are
+  sufficient to implement the step label and countdown without any
+  back-end change. If, during `/speckit-plan` or `/speckit-tasks`,
+  any proposed implementation path requires a new or modified
+  back-end endpoint, a new wire field, a streaming/SSE channel, or
+  any other BFF contract change to satisfy FR-003a, planning MUST
+  halt and **explicit user approval MUST be obtained before the
+  plan is written or tasks are generated**. Approval MUST be
+  recorded in the plan's Complexity Tracking section with a brief
+  justification for why a client-only approach was insufficient.
 - **FR-004**: On successful completion, the app MUST display the
   transcribed source text and the translated target text, and MUST play the
   translated audio:

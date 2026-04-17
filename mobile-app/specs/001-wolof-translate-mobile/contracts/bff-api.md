@@ -284,3 +284,17 @@ Every handler below MUST exist in `src/api/__tests__/bff-client.test.ts` BEFORE 
 - The BFF has no formal API version header. Drift is detected via contract tests (§5) running in CI.
 - If the BFF adds a field in `result` or `error`, the client passes it through to the dev-mode raw-response view (FR-015c) unchanged but ignores it for domain logic unless explicitly consumed.
 - If the BFF removes or renames any of `request_id`, `status`, `stage`, `direction`, `poll_after_ms`, `result.transcribed_text`, `result.translated_text`, `result.output_mode`, `result.audio_url`, the contract tests fail and a coordinated BFF+mobile change is required.
+
+---
+
+## 7. FR-003a — no contract change (2026-04-17)
+
+The FR-003a persistent pipeline status bar (added to `spec.md` on 2026-04-17) is implemented client-only. The FR-003a **Back-end scope gate** is CLEARED for the following reasons, recorded here so the contract boundary is explicit:
+
+| Bar element | Source | Contract impact |
+|---|---|---|
+| Step label (during `polling`) | `stage` + `direction` on every poll frame (§2 shape above) | **None.** Both fields already exist. |
+| Step label (during `uploading`, `retrying`, `playing`, `timed_out`, `failed`) | Client `phase` only | **None.** No BFF involvement. |
+| Countdown (seconds remaining) | Client-computed `timeoutAtMs` (FR-020 formula) | **None.** Not derived from any BFF field. |
+
+No new endpoint, no new wire field, no streaming/SSE channel, and no change to the existing 15 contract tests (§5). If a future iteration asks for finer sub-stage progress (e.g., "transcribed 12 s of 60 s"), that WOULD reopen this contract — the FR-003a Back-end scope gate requires explicit user approval before planning such an extension.
