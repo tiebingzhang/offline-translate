@@ -1,0 +1,34 @@
+# Python packaging for the offline-translate BFF.
+# Adds PyAV for in-memory AAC/m4a transcoding (FR-038) and AAC encoding (FR-039).
+# PyAV ships pre-built wheels bundling FFmpeg — no system ffmpeg binary required.
+# PyAV 13.x release notes: https://github.com/PyAV-Org/PyAV/releases
+# (001-wolof-translate-mobile:T135a)
+
+[project]
+name = "offline-translate"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "soxr",
+    "torch",
+    "transformers",
+    "huggingface_hub",
+    "sentencepiece",
+    "av ~= 13.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["app", "web_server", "translate", "wolof_speech_server", "wolof_to_english_translate_server", "speak_translate", "main"]
