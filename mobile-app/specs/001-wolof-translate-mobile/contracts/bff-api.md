@@ -227,10 +227,11 @@ No body. Response is a binary audio stream.
 
 ### Response — 200 OK
 
-- **Content-Type**: `audio/wav` (per `mobile_app_implementation_plan.md:327`) or `audio/m4a` if the BFF transcodes.
-- **Body**: raw audio bytes.
+- **Content-Type**: `audio/m4a` (AAC in MP4 container, 48 kbps mono 16 kHz — per FR-039b; symmetric with the upload codec).
+- **Content-Disposition**: `attachment; filename="{request_id}.m4a"` (per FR-039a).
+- **Body**: raw AAC/m4a bytes.
 
-Client downloads via `expo-file-system` (`downloadAsync` to `Paths.document/audio/{requestId}.m4a`). This happens immediately on pipeline completion and BEFORE the history-insert so FR-013 offline-replay works on first view.
+Client downloads via `expo-file-system` (`downloadAsync` to `Paths.document/audio/{requestId}.m4a`). Extension is fixed at `.m4a` (matches FR-039b and `src/api/bff-client.ts:381`). This happens immediately on pipeline completion and BEFORE the history-insert so FR-013 offline-replay works on first view.
 
 ### Failure modes
 

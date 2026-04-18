@@ -95,7 +95,7 @@ interface TranslationResult {
   translatedText: string;       // target
   outputMode: OutputMode;
   audioUrl: string | null;      // absolute URL to BFF audio endpoint (BE-1); null for english_to_wolof until BE-1 ships
-  localAudioUri: string | null; // set once audio has been downloaded to Paths.document/audio/{requestId}.m4a
+  localAudioUri: string | null; // set once audio has been downloaded to Paths.document/audio/{requestId}.{ext} (extension from BE-1 Content-Type)
   completedAtMs: number;        // epoch ms (BFF's completed_at_ms)
 }
 ```
@@ -111,9 +111,12 @@ interface HistoryEntry {
   direction: Direction;
   transcribedText: string;
   translatedText: string;
-  // Relative to Paths.document/audio/ (e.g., "a1b2c3d4.m4a") for audio-backed
-  // entries. EMPTY STRING for TTS-only entries (FR-004 wolof_to_english) where
-  // replay is produced on-device by expo-speech; no file is stored on disk.
+  // Relative to Paths.document/audio/ for audio-backed entries. The file
+  // extension is derived from the BE-1 response's `Content-Type` at download
+  // time (contracts/bff-api.md §3 permits audio/wav OR audio/m4a), typically
+  // ".m4a" if the BFF transcodes or ".wav" if it serves the raw whisper output.
+  // EMPTY STRING for TTS-only entries (FR-004 wolof_to_english) where replay
+  // is produced on-device by expo-speech; no file is stored on disk.
   // See Phase 4 Remediation T075c.
   audioPath: string;
   audioByteSize: number;        // 0 when audioPath is empty; otherwise used for the 50 MB cap check
@@ -181,7 +184,7 @@ Buffer capacity: 500. `clear()` empties the buffer (FR-015d).
 | User settings | Zustand `useSettingsStore` with `persist` → AsyncStorage | Small KV, no query patterns; fast cold-read for FR-028 |
 | Developer settings | Same store as user settings (namespaced) | Same KV store; no second dependency |
 | History metadata | `expo-sqlite` — `history.db`, table `history` | Predictable ordering + bounded-count trim is cleaner in SQL |
-| History audio blobs | `expo-file-system` `Paths.document/audio/{requestId}.m4a` | `documentDirectory` survives OS purge (unlike `cacheDirectory`); required by FR-007 / FR-013 |
+| History audio blobs | `expo-file-system` `Paths.document/audio/{requestId}.{ext}` (ext derived from BE-1 `Content-Type`, typically `m4a` or `wav`) | `documentDirectory` survives OS purge (unlike `cacheDirectory`); required by FR-007 / FR-013 |
 | In-flight captured audio | `expo-file-system` `Paths.cache/in-flight/{localId}.m4a` | Transient; fine to lose on OS purge after completion |
 | In-flight `requestId` (for background-resume) | SQLite `pending_jobs` table (see §3) | Persists across process termination; required by FR-006a |
 | Dev-mode event log | Zustand `useDevLogStore` (in-memory, session-only) | FR-015d scope is "current session"; clear-log action zeroes the buffer |

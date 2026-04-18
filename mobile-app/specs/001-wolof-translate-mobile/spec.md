@@ -23,6 +23,7 @@
 ### Session 2026-04-17
 
 - Q: The BFF currently rejects every mobile upload with *"must be a WAV file"* because `normalize_audio_for_whisper` is WAV-only. Previously the AAC/m4a ingestion work was tracked cross-session as "BE-2" in `mobile_app_implementation_plan.md`. Should BE-2 stay out-of-session or fold into this spec? → A: **Fold BE-2 into the current session.** The mobile-app and BFF share a single git repo (`offline-translate/` with `mobile-app/` as a subdir), so the `001-wolof-translate-mobile` branch already covers both surfaces — no cross-repo coordination cost. Added as FR-038 with an in-scope implementation recipe (PyAV, in-memory transcoding, no system `ffmpeg`). The spec's prior "separate, coordinated effort" wording under §Assumptions and §Dependencies is superseded.
+- Q: Should BE-1 (the companion server-side change that exposes the generated Wolof audio to the mobile client over HTTP, previously also tracked cross-session) also fold into this session so SC-001's "hearing the translated audio" is verifiable end-to-end? → A: **Fold BE-1 into the current session as FR-039.** Same git-root rationale as FR-038. Six sub-decisions recorded: (a) downlink format is **AAC in MP4 container** (`audio/m4a`) at **48 kbps mono 16 kHz** — symmetric with the upload codec (FR-038a) and ~5× smaller than the PCM WAV baseline over the `deploy-dev.md` Cloudflare-Tunnel topology; (b) transcode runs **eagerly** at job completion inside the existing `generating_speech` pipeline stage — no new `BackendStage`, no change to the FR-003a step-label vocabulary, no wire-contract addition beyond the `audio_url` field already documented in `contracts/bff-api.md §2`; (c) PyAV is reused from FR-038 — **no additional Python dependency**; (d) the legacy `.wav` file is **retained** on disk alongside the new `.m4a` for webapp playback + debugging; (e) on transcode failure, the job is marked `status: failed` with a descriptive `error.message` (the client's existing `server_failed` retry path covers user recovery); (f) no retention/eviction policy is defined in v1 (future work). The spec's prior "BE-1 is a hard prerequisite tracked cross-repo" wording under §Dependencies and `research.md` §10 R-A is superseded.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -316,11 +317,12 @@ recognizably inspired by West African design, not generic stock.
      from the back-end `stage` field when polling (FR-004) and from
      the client phase otherwise (upload, retry, playback). The label
      vocabulary MUST include at minimum: "Uploading recording",
-     "Transcribing English audio to text" / "Transcribing Wolof audio
-     to text" (direction-aware), "Translating English to Wolof" /
-     "Translating Wolof to English" (direction-aware), "Generating
-     Wolof audio" (English → Wolof only), "Playing translation",
-     "Retrying…", "Timed out", "Failed".
+     "Queued" (back-end `stage=queued`), "Preparing audio" (back-end
+     `stage=normalizing`), "Transcribing English audio to text" /
+     "Transcribing Wolof audio to text" (direction-aware),
+     "Translating English to Wolof" / "Translating Wolof to English"
+     (direction-aware), "Generating Wolof audio" (English → Wolof
+     only), "Playing translation", "Retrying…", "Timed out", "Failed".
   b. **Timeout countdown** — the remaining time in the FR-020
      end-to-end budget, expressed in whole seconds, decrementing
      once per second and never displayed below zero. The countdown
@@ -392,8 +394,12 @@ recognizably inspired by West African design, not generic stock.
 - **FR-013a**: History entries MUST be displayed newest-first (most
   recently completed at the top).
 - **FR-013b**: When no history entries exist, the History view MUST
-  show an empty-state message that directs the user back to the main
-  screen to start a translation (no blank/empty list allowed).
+  show an empty-state message directing the user back to the main
+  screen to start a translation (no blank/empty list allowed). The
+  directive is **copy-only**: no in-view tap-to-navigate affordance
+  is required, since the History view is already reachable via a
+  single back / close action from the main screen (T073 navigation
+  affordance).
 - **FR-013c**: The user MUST be able to delete any single history entry
   via a swipe-to-delete interaction. Deleting an entry MUST remove both
   its text and its stored audio from the device within the same user
@@ -408,7 +414,12 @@ recognizably inspired by West African design, not generic stock.
   a. Preview the captured recording before or without uploading.
   b. Upload an audio file selected from device storage in addition to
      recording live.
-  c. View the raw, unredacted back-end response from the last upload.
+  c. View the raw, unredacted back-end response from the **most
+     recent terminal-state poll** (completed, failed, or timed-out)
+     in the current app session. The retained payload MUST be
+     cleared when the user starts a new recording or explicitly
+     discards (FR-021). Retention across app restarts is NOT
+     required in v1.
   d. View a chronological, scrollable event log of the current session
      with a clear-log action.
   e. Edit the back-end URL at runtime.
@@ -545,12 +556,89 @@ recognizably inspired by West African design, not generic stock.
     returns a non-`wav` result; the legacy WAV pipeline MUST remain
     on its existing code path.
   - **FR-038d (error surfaces)**: If transcoding fails (corrupt
-    container, unsupported codec, empty stream), the BFF MUST set the
-    job's `status` to `failed` with a specific, descriptive
-    `error.message` (e.g., *"Audio container could not be decoded by
-    PyAV: <reason>"*) so the developer-mode panel (FR-015c) exposes
-    it verbatim and the client's existing `server_failed` error path
-    (FR-018) renders a user-readable failure.
+    container, unsupported codec, missing audio stream, empty
+    decoded stream), the BFF MUST set the job's `status` to `failed`
+    with a specific, descriptive `error.message` (e.g., *"Audio
+    container could not be decoded by PyAV: <reason>"*, *"Upload
+    contains no audio stream."*, *"Decoded audio stream was empty."*)
+    so the developer-mode panel (FR-015c) exposes it verbatim and
+    the client's existing `server_failed` error path (FR-018)
+    renders a user-readable failure.
+  - **FR-038e (server-side resource limits)**: On the non-WAV
+    ingestion path (FR-038b), the BFF MUST enforce two bounds
+    BEFORE handing decoded audio to the whisper pipeline:
+    (1) raw upload byte size ≤ 2 MiB (`2 * 1024 * 1024` bytes) —
+    uploads exceeding this MUST be rejected with `status: failed`
+    and `error.message = "Upload exceeds 2 MiB size cap."`, without
+    being handed to PyAV;
+    (2) decoded PCM duration ≤ 75 seconds — streams longer than
+    this MUST raise a descriptive RuntimeError (`"Decoded audio
+    duration exceeds 75s cap."`) that surfaces through the same
+    FR-038d error path.
+    Rationale: the client already caps recordings at 60 s (FR-002a)
+    producing ~360 KB at 48 kbps mono 16 kHz AAC. 2 MiB gives ~5.6×
+    budget for legitimate jitter while preventing OOM on a
+    pathologically-large container or decompression-bomb codec that
+    bypasses the client. 75 s duration = 60 s recording + 25 %
+    slack for resampler drift.
+
+- **FR-039**: The back-end-for-frontend (`web_server.py`) MUST serve
+  the generated Wolof audio to the mobile client over HTTP and MUST
+  reference it on the completion result so the mobile client can
+  download and play it without re-running the pipeline. Specifically:
+  - **FR-039a (audio endpoint)**: The BFF MUST expose
+    `GET /api/requests/{request_id}/audio` returning the generated
+    audio for a completed english_to_wolof job. The success response
+    MUST be HTTP 200 with `Content-Type: audio/m4a`,
+    `Content-Length` populated from the file size on disk, and
+    `Content-Disposition: attachment; filename="{request_id}.m4a"`
+    so the client saves a deterministic file extension
+    (`data-model.md §1.3` `HistoryEntry.audioPath` depends on this
+    for offline replay). The BFF MUST return 404 if `request_id`
+    is unknown or its audio has been evicted, and 409 (or
+    similarly distinct 4xx) if the job is not in a completed state
+    with `output_mode == "wolof_audio"`.
+  - **FR-039b (downlink format)**: The served audio MUST be **AAC
+    in an MP4 container** (`audio/m4a`) encoded at **48 kbps mono
+    16 kHz** — symmetric with the mobile upload codec (FR-038a)
+    and chosen to minimize bandwidth over cellular and the
+    Cloudflare-Tunnel deployment topology described in
+    `deploy-dev.md`. The BFF MUST reuse the PyAV (`av`) dependency
+    already introduced by FR-038b — **no additional Python
+    dependency** is added by FR-039.
+  - **FR-039c (eager transcoding, no new stage)**: The WAV→AAC
+    transcode MUST run eagerly, inside the existing
+    `generating_speech` pipeline stage, after
+    `wolof_speech_server` writes the WAV and BEFORE the job
+    transitions to `status: completed`. The BFF MUST NOT add a new
+    `BackendStage` value; `timings_ms.generating_speech` absorbs
+    the transcode cost. This keeps the FR-003a step-label
+    vocabulary unchanged and requires no mobile-client change.
+  - **FR-039d (dual-format retention)**: The generated `.wav` file
+    MUST remain on disk at its existing `speech_result.output_path`
+    (for legacy webapp playback and debugging). The new `.m4a`
+    MUST be written alongside at `generated_audio/{request_id}.m4a`
+    and its path exposed on the result as
+    `speech_result.output_path_m4a` so developer-mode raw-response
+    view (FR-015c) can surface both. No retention / eviction
+    policy is defined in v1 — explicit future work.
+  - **FR-039e (result field, matches existing contract)**: On
+    english_to_wolof job completion the BFF MUST set
+    `result.audio_url = "/api/requests/{request_id}/audio"`
+    (relative path; the mobile client resolves it against the
+    configured backend base URL per FR-022). `audio_url` MUST
+    remain `null` for wolof_to_english jobs (on-device TTS per
+    FR-004). This satisfies the `audio_url` field already
+    documented and awaited in `contracts/bff-api.md §2`.
+  - **FR-039f (transcode failure = job failure)**: If the AAC
+    encode fails (PyAV encoder error, disk write failure, empty
+    encoded stream), the BFF MUST set the job's `status` to
+    `failed` with `error.message = "Failed to encode output
+    audio: <reason>"` and MUST NOT populate `audio_url`. The
+    partial `.wav` on disk MAY remain (for debugging) but the
+    job is terminal-failed from the client's perspective; the
+    client's existing `server_failed` error path (FR-018) renders
+    the user-readable failure and retry affordance.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -613,6 +701,19 @@ recognizably inspired by West African design, not generic stock.
   failed`, and MUST produce whisper transcription accuracy within 5%
   word-error-rate of the same utterance sent as PCM WAV (baseline
   recorded in `mobile_app_implementation_plan.md` §5.1 / §TC-1).
+- **SC-013** (FR-039): With the BFF's FR-039 audio delivery path
+  enabled, a live iOS simulator or physical iPhone recording in
+  the english→wolof direction MUST (a) receive a non-null
+  `audio_url` on the completion poll response, (b) successfully
+  download the audio from `GET /api/requests/{id}/audio` with
+  `Content-Type: audio/m4a`, (c) play the audio back via
+  `expo-audio` without format conversion, and (d) produce a
+  downloaded payload that is **at least 5× smaller in bytes**
+  than the equivalent PCM WAV baseline at
+  `speech_result.output_path` (bandwidth verification for the
+  Cloudflare-Tunnel deployment target). The existing desktop
+  webapp MUST still play the retained `.wav` file unchanged
+  (regression check on FR-039d).
 
 ## Assumptions
 
@@ -620,14 +721,17 @@ recognizably inspired by West African design, not generic stock.
   `/Users/m849876/workspace/crying-affrica/offline-translate` (the BFF
   and its downstream speech/translation services) are the single source
   of truth for translation pipeline behavior. The mobile client consumes
-  their existing network API surface. Per FR-038 (added 2026-04-17) a
-  single, narrow BFF extension — AAC/m4a ingestion via in-memory PyAV
-  transcoding — is now **in scope for this session**. No other part of
-  the BFF contract is redefined by the mobile client.
+  their existing network API surface. Per FR-038 and FR-039 (both
+  added 2026-04-17) two narrow BFF extensions are now **in scope for
+  this session**: (i) AAC/m4a ingestion via in-memory PyAV
+  transcoding (FR-038, the "BE-2" fold-in), (ii) AAC/m4a audio
+  delivery via an HTTP endpoint with eager server-side transcode
+  (FR-039, the "BE-1" fold-in). No other part of the BFF contract
+  is redefined by the mobile client.
 - The mobile-app tree and the BFF (`web_server.py`) live in the same
-  git repository, so FR-038's BFF change is carried on the same
-  `001-wolof-translate-mobile` feature branch as the mobile work. No
-  cross-repo coordination is required.
+  git repository, so FR-038's and FR-039's BFF changes are both
+  carried on the same `001-wolof-translate-mobile` feature branch as
+  the mobile work. No cross-repo coordination is required.
 - No user accounts, sign-in, or per-user data model are in scope for
   this feature; the product is single-user per device.
 - Distribution in v1 is limited to an internal / beta channel; public
@@ -650,6 +754,14 @@ recognizably inspired by West African design, not generic stock.
   FR-038** (formerly tracked as cross-session "BE-2"). Until FR-038 is
   implemented, the core translation round-trip (US1) cannot complete
   against the running BFF and the feature remains blocked.
+- **Back-end audio delivery**: the back-end must serve the generated
+  Wolof audio to the mobile client over HTTP and expose its URL on
+  the completion result. **Now in-scope for this session as FR-039**
+  (formerly tracked as cross-session "BE-1"). Until FR-039 is
+  implemented, the english→wolof direction cannot deliver playable
+  audio to the mobile client, `audio_url` remains `null` on every
+  completion response, and SC-001's "hearing the translated audio"
+  step cannot be verified end-to-end.
 - **Reachable back-end endpoint**: the app assumes a reachable
   development endpoint for local iteration and a reachable TLS-protected
   endpoint for release builds. Hosting/DNS for the latter is outside the
