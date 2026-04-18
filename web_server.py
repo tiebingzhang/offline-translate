@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import error, parse, request
 
+import av  # PyAV — FR-038 in-memory AAC/m4a transcoding (001-wolof-translate-mobile:T139)
 import numpy as np
 import soxr
 
@@ -27,6 +28,20 @@ LOGGER = logging.getLogger("wolof_translate.web_server")
 DEFAULT_DIRECTION = "english_to_wolof"
 SUPPORTED_DIRECTIONS = frozenset({"english_to_wolof", "wolof_to_english"})
 WHISPER_SAMPLE_RATE = 16000
+
+# FR-038e pre-decode and post-decode resource caps on the non-WAV ingestion
+# path. 60 s recording @ 48 kbps mono 16 kHz AAC is ~360 KB; 2 MiB gives ~5.6x
+# budget for legitimate jitter while bounding decompression-bomb risk. 75 s =
+# 60 s FR-002a cap + 25 % resampler slack.
+# (001-wolof-translate-mobile:T139)
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_DECODED_DURATION_SEC = 75.0
+
+# FR-039b downlink encode settings — symmetric with the mobile upload codec
+# and ~5x smaller than PCM WAV over the Cloudflare-Tunnel deployment topology.
+# (001-wolof-translate-mobile:T146)
+WOLOF_TTS_SAMPLE_RATE = 16_000
+WOLOF_TTS_AAC_BITRATE = 48_000
 
 
 @dataclass(frozen=True)
@@ -117,6 +132,9 @@ def sniff_audio_format(data):
         return "ogg"
     if len(data) >= 4 and data[:4] == b"\x1a\x45\xdf\xa3":
         return "webm"
+    # MP4/m4a magic: `ftyp` at offset 4 (001-wolof-translate-mobile:T139)
+    if len(data) >= 8 and data[4:8] == b"ftyp":
+        return "m4a"
     return "unknown"
 
 
@@ -203,9 +221,126 @@ def _encode_pcm16_wav(samples, sample_rate):
     return buffer.getvalue()
 
 
+def transcode_to_wav(audio_bytes):
+    """Decode any PyAV-supported container to 16 kHz mono PCM WAV bytes.
+
+    Raises RuntimeError with a descriptive, FR-038d-compliant message on
+    corrupt/unsupported input or when FR-038e resource bounds are exceeded.
+    (001-wolof-translate-mobile:T139)
+    """
+    if len(audio_bytes) > MAX_UPLOAD_BYTES:
+        raise RuntimeError("Upload exceeds 2 MiB size cap.")
+
+    input_buf = io.BytesIO(audio_bytes)
+    try:
+        container = av.open(input_buf, format=None)
+    except av.AVError as exc:
+        raise RuntimeError(
+            f"Audio container could not be decoded by PyAV: {exc}"
+        ) from exc
+
+    try:
+        stream = next(
+            (s for s in container.streams if s.type == "audio"),
+            None,
+        )
+        if stream is None:
+            raise RuntimeError("Upload contains no audio stream.")
+
+        resampler = av.AudioResampler(
+            format="s16",
+            layout="mono",
+            rate=WHISPER_SAMPLE_RATE,
+        )
+
+        pcm_chunks: list[np.ndarray] = []
+        total_samples = 0
+        max_samples = int(MAX_DECODED_DURATION_SEC * WHISPER_SAMPLE_RATE)
+
+        for frame in container.decode(stream):
+            for resampled in resampler.resample(frame):
+                arr = resampled.to_ndarray().reshape(-1)
+                pcm_chunks.append(arr)
+                total_samples += arr.size
+                if total_samples > max_samples:
+                    raise RuntimeError(
+                        "Decoded audio duration exceeds 75s cap."
+                    )
+        for resampled in resampler.resample(None):
+            arr = resampled.to_ndarray().reshape(-1)
+            pcm_chunks.append(arr)
+            total_samples += arr.size
+            if total_samples > max_samples:
+                raise RuntimeError(
+                    "Decoded audio duration exceeds 75s cap."
+                )
+    finally:
+        container.close()
+
+    if not pcm_chunks:
+        raise RuntimeError("Decoded audio stream was empty.")
+
+    pcm_i16 = np.concatenate(pcm_chunks).astype(np.int16)
+    # Reuse _encode_pcm16_wav by renormalizing back to float32 in [-1, 1).
+    pcm_f32 = pcm_i16.astype(np.float32) / 32768.0
+    return _encode_pcm16_wav(pcm_f32, WHISPER_SAMPLE_RATE)
+
+
+def encode_pcm_to_aac_m4a(wav_bytes):
+    """Encode 16 kHz mono PCM WAV bytes to AAC-in-MP4 (m4a) bytes in memory.
+
+    Raises RuntimeError on encoder/container failure (FR-039f).
+    (001-wolof-translate-mobile:T146)
+    """
+    in_buf = io.BytesIO(wav_bytes)
+    out_buf = io.BytesIO()
+    in_container = None
+    out_container = None
+
+    try:
+        in_container = av.open(in_buf, mode="r", format="wav")
+        out_container = av.open(out_buf, mode="w", format="mp4")
+
+        in_stream = next(s for s in in_container.streams if s.type == "audio")
+        out_stream = out_container.add_stream(
+            "aac",
+            rate=WOLOF_TTS_SAMPLE_RATE,
+            layout="mono",
+        )
+        out_stream.bit_rate = WOLOF_TTS_AAC_BITRATE
+
+        for frame in in_container.decode(in_stream):
+            frame.pts = None
+            for packet in out_stream.encode(frame):
+                out_container.mux(packet)
+        for packet in out_stream.encode(None):
+            out_container.mux(packet)
+    except av.AVError as exc:
+        raise RuntimeError(f"Failed to encode output audio: {exc}") from exc
+    finally:
+        if out_container is not None:
+            try:
+                out_container.close()
+            except Exception:  # pragma: no cover - defensive close
+                pass
+        if in_container is not None:
+            try:
+                in_container.close()
+            except Exception:  # pragma: no cover - defensive close
+                pass
+
+    encoded = out_buf.getvalue()
+    if not encoded:
+        raise RuntimeError("Failed to encode output audio: empty output stream.")
+    return encoded
+
+
 def normalize_audio_for_whisper(audio_bytes, input_filename):
     if sniff_audio_format(audio_bytes) != "wav":
-        raise RuntimeError(f"Audio upload {input_filename!r} must be a WAV file.")
+        # FR-038b: transcode any non-WAV upload (m4a/AAC, OGG, WebM)
+        # in-memory to 16 kHz mono PCM WAV before the legacy pipeline runs.
+        # (001-wolof-translate-mobile:T140)
+        audio_bytes = transcode_to_wav(audio_bytes)
 
     samples, sample_rate = _read_wav_samples(audio_bytes, input_filename)
 
