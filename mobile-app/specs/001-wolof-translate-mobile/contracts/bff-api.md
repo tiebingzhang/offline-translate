@@ -149,7 +149,10 @@ Two main terminal shapes and one transient shape. Every response includes `poll_
 }
 ```
 
-> ⚠ **`audio_url` is a BE-1 field, not present in the current production BFF.** Until BE-1 lands (see `mobile_app_implementation_plan.md:260`), english_to_wolof cannot deliver playable audio to the mobile client. This is the hard prerequisite tracked in `research.md` §10 R-A.
+> **`audio_url`** is populated on every `english_to_wolof` completion
+> response as of FR-039 (folded in-session 2026-04-17). It is `null` for
+> `wolof_to_english` completions (on-device TTS per FR-004). The BE-1
+> prerequisite previously tracked in `research.md` §10 R-A is now resolved.
 
 **Terminal — failed**:
 
@@ -217,9 +220,10 @@ interface JobError {
 
 ---
 
-## 3. `GET /api/requests/{request_id}/audio`  (BE-1 — pending)
+## 3. `GET /api/requests/{request_id}/audio`
 
-Stream the generated audio for a completed `english_to_wolof` job.
+Stream the generated audio for a completed `english_to_wolof` job. Shipped as
+FR-039 on 2026-04-17 (previously tracked as "BE-1 pending").
 
 ### Request
 
@@ -285,6 +289,7 @@ Every handler below MUST exist in `src/api/__tests__/bff-client.test.ts` BEFORE 
 - The BFF has no formal API version header. Drift is detected via contract tests (§5) running in CI.
 - If the BFF adds a field in `result` or `error`, the client passes it through to the dev-mode raw-response view (FR-015c) unchanged but ignores it for domain logic unless explicitly consumed.
 - If the BFF removes or renames any of `request_id`, `status`, `stage`, `direction`, `poll_after_ms`, `result.transcribed_text`, `result.translated_text`, `result.output_mode`, `result.audio_url`, the contract tests fail and a coordinated BFF+mobile change is required.
+- **2026-04-17**: `audio_url` is now always populated on `english_to_wolof` completion responses (FR-039). Consumers that previously treated it as nullable on that direction must still handle `null` for `wolof_to_english` completions.
 
 ---
 

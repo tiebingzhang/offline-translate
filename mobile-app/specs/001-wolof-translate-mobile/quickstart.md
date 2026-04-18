@@ -54,7 +54,7 @@ npx expo start --dev-client
 # in the Expo UI: press i to open on iOS Simulator
 ```
 
-The first launch on a fresh simulator triggers the `NSMicrophoneUsageDescription` prompt — accept it. Record a 3-second phrase, release, and watch the header status pill progress through `queued → normalizing → transcribing → translating → generating_speech → completed`. The **persistent bottom status bar** (FR-003a) simultaneously shows a plain-language step label (e.g., "Transcribing English audio to text") and a live countdown in seconds down from the FR-020 budget (33 s for a 3 s clip). The translated audio plays automatically when complete.
+The first launch on a fresh simulator triggers the `NSMicrophoneUsageDescription` prompt — accept it. Record a 3-second phrase, release, and watch the header status pill progress through `queued → normalizing → transcribing → translating → generating_speech → completed`. The **persistent bottom status bar** (FR-003a) simultaneously shows a plain-language step label (e.g., "Transcribing English audio to text") and a live countdown in seconds down from the FR-020 budget (33 s for a 3 s clip). The translated Wolof audio plays back automatically via `expo-audio` once the client downloads it from `GET /api/requests/{id}/audio` (FR-039, landed 2026-04-17 — previously noted as BE-1-gated).
 
 ---
 

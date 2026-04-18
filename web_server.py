@@ -625,6 +625,19 @@ def process_request_job(
                 "Sending Wolof text to the speech server.",
             )
             speech_result = call_speech_server(whisper_result["text"], speech_config)
+            # FR-039c — eagerly encode the TTS WAV to AAC/m4a inside the same
+            # generating_speech stage so FR-003a step-label vocabulary is
+            # unchanged and the mobile client receives `audio_url` on the
+            # completion response. timings_ms.generating_speech absorbs the
+            # ~100 ms encode cost. The .wav is retained on disk for webapp
+            # playback + debugging per FR-039d.
+            # (001-wolof-translate-mobile:T147)
+            wav_disk_path = Path(speech_result["output_path"])
+            wav_bytes = wav_disk_path.read_bytes()
+            m4a_bytes = encode_pcm_to_aac_m4a(wav_bytes)
+            m4a_disk_path = wav_disk_path.parent / f"{request_id}.m4a"
+            m4a_disk_path.write_bytes(m4a_bytes)
+            speech_result["output_path_m4a"] = str(m4a_disk_path)
             record_stage_timing(job_store, request_id, stage, started_at_ms)
             output_mode = "wolof_audio"
         elif direction == "wolof_to_english":
@@ -653,6 +666,15 @@ def process_request_job(
             record_stage_timing(job_store, request_id, stage, started_at_ms)
             output_mode = "english_audio"
 
+        # FR-039e — relative path; the mobile client resolves it against the
+        # configured backend base URL per FR-022. `audio_url` stays None for
+        # wolof_to_english (on-device TTS per FR-004).
+        # (001-wolof-translate-mobile:T147)
+        audio_url = (
+            f"/api/requests/{request_id}/audio"
+            if direction == "english_to_wolof"
+            else None
+        )
         complete_job(
             job_store,
             request_id,
@@ -665,6 +687,7 @@ def process_request_job(
                 "translation_result": translation_result,
                 "output_mode": output_mode,
                 "speech_result": speech_result,
+                "audio_url": audio_url,
             },
         )
     except Exception as exc:
@@ -683,16 +706,27 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             return
 
         if route_path.startswith("/api/requests/"):
-            request_id = route_path.rsplit("/", 1)[-1]
-            job = self.server.job_store.get(request_id)
-            if job is None:
-                self._write_json(
-                    HTTPStatus.NOT_FOUND,
-                    {"error": {"message": "Request not found.", "type": "NotFound"}, "request_id": request_id},
-                )
+            remaining = route_path[len("/api/requests/"):]
+            parts = remaining.split("/")
+            # FR-039a — `/api/requests/{id}/audio` must be matched BEFORE the
+            # plain `/api/requests/{id}` branch so `audio` isn't mistakenly
+            # treated as a request-id.
+            # (001-wolof-translate-mobile:T148)
+            if len(parts) == 2 and parts[1] == "audio":
+                self._serve_request_audio(parts[0])
                 return
-
-            self._write_json(HTTPStatus.OK, serialize_job_for_response(job))
+            if len(parts) == 1 and parts[0]:
+                request_id = parts[0]
+                job = self.server.job_store.get(request_id)
+                if job is None:
+                    self._write_json(
+                        HTTPStatus.NOT_FOUND,
+                        {"error": {"message": "Request not found.", "type": "NotFound"}, "request_id": request_id},
+                    )
+                    return
+                self._write_json(HTTPStatus.OK, serialize_job_for_response(job))
+                return
+            self._write_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
 
         relative_path = "index.html" if route_path == "/" else route_path.lstrip("/")
@@ -812,6 +846,66 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
                 "poll_after_ms": 500,
             },
         )
+
+    def _serve_request_audio(self, request_id):
+        # FR-039a route: GET /api/requests/{id}/audio
+        # (001-wolof-translate-mobile:T148)
+        job = self.server.job_store.get(request_id)
+        if job is None:
+            self._write_json(
+                HTTPStatus.NOT_FOUND,
+                {
+                    "error": {"message": "Request not found.", "type": "NotFound"},
+                    "request_id": request_id,
+                },
+            )
+            return
+
+        result = job.get("result") or {}
+        if job.get("status") != "completed" or result.get("output_mode") != "wolof_audio":
+            self._write_json(
+                HTTPStatus.CONFLICT,
+                {
+                    "error": {"message": "Audio not available for this job.", "type": "InvalidState"},
+                    "request_id": request_id,
+                },
+            )
+            return
+
+        speech_result = result.get("speech_result") or {}
+        m4a_path_str = speech_result.get("output_path_m4a")
+        if not m4a_path_str:
+            self._write_json(
+                HTTPStatus.NOT_FOUND,
+                {
+                    "error": {"message": "Audio file evicted or missing.", "type": "NotFound"},
+                    "request_id": request_id,
+                },
+            )
+            return
+
+        m4a_path = Path(m4a_path_str)
+        if not m4a_path.is_file():
+            self._write_json(
+                HTTPStatus.NOT_FOUND,
+                {
+                    "error": {"message": "Audio file evicted or missing.", "type": "NotFound"},
+                    "request_id": request_id,
+                },
+            )
+            return
+
+        size = m4a_path.stat().st_size
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "audio/m4a")
+        self.send_header("Content-Length", str(size))
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{request_id}.m4a"',
+        )
+        self.end_headers()
+        with m4a_path.open("rb") as file_obj:
+            shutil.copyfileobj(file_obj, self.wfile)
 
     def log_message(self, format, *args):
         LOGGER.info("HTTP %s - %s", self.client_address[0], format % args)
