@@ -33,11 +33,14 @@ export interface PipelineState {
   result: TranslationResult | null;
   error: TranslationError | null;
   // FR-019: real upload progress in [0, 1]; null until the first byte event.
+  // (001-wolof-translate-mobile:T083)
   uploadProgress: number | null;
   // Wall-clock ms when the upload phase began. Consumers use this to gate the
   // 2-second visibility threshold so fast uploads never flicker an indicator.
+  // (001-wolof-translate-mobile:T083)
   uploadStartedAtMs: number | null;
   // Becomes true 2 s after upload begins (set by the store via setTimeout).
+  // (001-wolof-translate-mobile:T083)
   uploadProgressVisible: boolean;
 }
 

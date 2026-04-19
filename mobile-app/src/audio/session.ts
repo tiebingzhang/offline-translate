@@ -55,8 +55,13 @@ export function subscribeToRouteChanges(
   _player: AudioPlayer,
   _listener: (event: RouteChangeEvent) => void,
 ): AudioSubscription {
-  // SDK 55 does not expose AVAudioSession.routeChange through expo-audio events;
-  // T056 wires the native bridge per research.md §10 R-D
-  // (001-wolof-translate-mobile:T056)
+  // FR-007: native AVAudioSession.routeChangeNotification (iOS) and
+  // AudioManager.ACTION_AUDIO_BECOMING_NOISY (Android) are NOT surfaced by
+  // expo-audio SDK 55. The native bridge is deferred — see
+  // ../../FIXME.md "FR-007 audio route-change native bridge". Until the
+  // bridge lands, OS-level auto-pause on wired-headphone disconnect still
+  // works (AVAudioSession handles that in the OS); we only lose the ability
+  // to observe route changes on the JS side. research.md §10 R-D
+  // (001-wolof-translate-mobile:T080)
   return { remove: () => {} };
 }

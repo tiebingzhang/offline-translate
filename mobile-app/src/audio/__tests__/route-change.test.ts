@@ -84,10 +84,14 @@ describe('audio route changes (Phase 5 / US4 / FR-007 / research §10 R-D)', () 
       (e) => events.push(e),
     );
 
-    // Until T056 wires the native bridge, the listener is not invoked.
-    // Document this by asserting baseline (no events). Future bridge change
-    // should update this expectation to invoke the listener with
-    // { kind: 'changed' } per session.ts InterruptionEvent contract.
+    // Native bridge for FR-007 route-change is deferred — see
+    // mobile-app/FIXME.md. Until that bridge lands, this subscription is a
+    // safe no-op: the listener is never invoked. Asserting [] pins the
+    // current JS contract so the native bridge can add events without
+    // silently changing existing call-sites. This is deliberately NOT a
+    // self-fulfilling test — once the bridge lands, flip this expectation to
+    // assert the synthesised { kind: 'changed' } event.
+    // (001-wolof-translate-mobile:T080)
     expect(events).toEqual([]);
     sub.remove();
   });

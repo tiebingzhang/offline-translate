@@ -24,6 +24,7 @@ interface KindStyle {
 
 // Color tone per kind — warning ochre for transient/recoverable, danger deep
 // for server/malformed. Drives the visual cue described in T076.
+// (001-wolof-translate-mobile:T076)
 const KIND_STYLE: Record<BannerKey, KindStyle> = {
   upload_failed: {
     background: (p) => p.warning,
@@ -79,6 +80,7 @@ export function RetryBanner(props: RetryBannerProps) {
 
   // FR-007/FR-018: only retryable kinds expose a Retry button. timed_out is
   // always retryable per FR-020. Non-retryable kinds promote Discard to primary.
+  // (001-wolof-translate-mobile:T076)
   const canRetry = error?.retryable ?? phase === 'timed_out';
 
   const background = tone.background(palette);
@@ -134,7 +136,8 @@ export function RetryBanner(props: RetryBannerProps) {
           style={({ pressed }) => [
             styles.button,
             // When Retry is unavailable, Discard becomes the primary filled
-            // action so the user always has an obvious next step (T076).
+            // action so the user always has an obvious next step.
+            // (001-wolof-translate-mobile:T076)
             canRetry ? styles.secondary : styles.primary,
             canRetry
               ? { borderColor: foreground, opacity: pressed ? 0.7 : 1 }

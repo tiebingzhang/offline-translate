@@ -268,6 +268,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
     if (!response) {
       // createUploadTask resolves undefined when cancelled — we never cancel
       // here, but the type allows it, so guard rather than cast.
+      // (001-wolof-translate-mobile:T083)
       throw new TranslationError({
         kind: 'upload_failed',
         message: 'Upload was cancelled before completion.',

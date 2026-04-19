@@ -143,6 +143,17 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
         dispatch({ type: 'playbackStarted' });
         void defaultPlayer.playResult(terminal, {
           onEnded: () => dispatch({ type: 'playbackEnded' }),
+          // FR-008: on an OS interruption (phone call, Siri, alarm) during
+          // playback, pause the native player and land in 'completed' so the
+          // result stays visible and the user can replay. The 'playbackEnded'
+          // reducer is a no-op unless phase === 'playing', so a stray second
+          // invocation (e.g. from a spurious status blip) is idempotent.
+          // (001-wolof-translate-mobile:T079)
+          onInterruptionBegan: () => {
+            if (get().phase !== 'playing') return;
+            defaultPlayer.pause();
+            dispatch({ type: 'playbackEnded' });
+          },
         });
       }
     } catch (err) {
