@@ -60,6 +60,23 @@ describe('HistoryRow', () => {
     expect(onDelete).toHaveBeenCalledWith(testEntry);
   });
 
+  test('hides the source label + text when transcribedText is empty', () => {
+    // The english_to_wolof pipeline emits an empty transcript because no
+    // English transcription is produced; the row must not show an empty
+    // "You said" line in that case.
+    // (001-wolof-translate-mobile:bugfix-transcript-translation)
+    const { queryByText } = render(
+      <HistoryRow
+        entry={{ ...testEntry, transcribedText: '' }}
+        onReplay={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+    expect(queryByText('You said')).toBeNull();
+    expect(queryByText('Good morning')).toBeNull();
+    expect(queryByText('Naka nga def')).toBeTruthy();
+  });
+
   test('composes an accessibility label including direction, timestamp, source, and target (T108)', () => {
     const { getByLabelText } = render(
       <HistoryRow entry={testEntry} onReplay={jest.fn()} onDelete={jest.fn()} />,

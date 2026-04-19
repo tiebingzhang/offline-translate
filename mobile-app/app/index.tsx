@@ -226,19 +226,21 @@ export default function MainScreen() {
 
         {showResult && result ? (
           <>
-            <View
-              style={[
-                styles.textBlock,
-                { backgroundColor: palette.surface, borderColor: palette.border },
-              ]}
-            >
-              <Text style={[styles.textLabel, { color: palette.textMuted }]}>
-                {i18n._('text.source')}
-              </Text>
-              <Text style={[styles.textBody, { color: palette.text }]}>
-                {result.transcribedText}
-              </Text>
-            </View>
+            {result.transcribedText ? (
+              <View
+                style={[
+                  styles.textBlock,
+                  { backgroundColor: palette.surface, borderColor: palette.border },
+                ]}
+              >
+                <Text style={[styles.textLabel, { color: palette.textMuted }]}>
+                  {i18n._('text.source')}
+                </Text>
+                <Text style={[styles.textBody, { color: palette.text }]}>
+                  {result.transcribedText}
+                </Text>
+              </View>
+            ) : null}
             <View
               style={[
                 styles.textBlock,

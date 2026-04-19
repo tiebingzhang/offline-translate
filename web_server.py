@@ -614,7 +614,12 @@ def process_request_job(
         speech_result = None
         translation_result = None
         translated_text = whisper_result["text"]
-        transcribed_text = whisper_result["text"]
+        # The english_to_wolof pipeline uses an end-to-end speech-to-Wolof-text
+        # model, so no English transcript is produced. Emit empty string so the
+        # client can hide the "you said" field instead of showing the Wolof
+        # translation twice. wolof_to_english gets the Wolof ASR output below.
+        # (001-wolof-translate-mobile:bugfix-transcript-translation)
+        transcribed_text = "" if direction == "english_to_wolof" else whisper_result["text"]
         output_mode = "text_only"
         if direction == "english_to_wolof":
             stage = "generating_speech"

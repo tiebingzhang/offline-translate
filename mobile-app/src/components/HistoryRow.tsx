@@ -80,12 +80,16 @@ export function HistoryRow({ entry, onReplay, onDelete }: HistoryRowProps) {
             </Text>
           </View>
 
-          <Text style={[styles.sourceLabel, { color: palette.textMuted }]}>
-            {i18n._('text.source')}
-          </Text>
-          <Text style={[styles.sourceText, { color: palette.text }]} numberOfLines={2}>
-            {entry.transcribedText}
-          </Text>
+          {entry.transcribedText ? (
+            <>
+              <Text style={[styles.sourceLabel, { color: palette.textMuted }]}>
+                {i18n._('text.source')}
+              </Text>
+              <Text style={[styles.sourceText, { color: palette.text }]} numberOfLines={2}>
+                {entry.transcribedText}
+              </Text>
+            </>
+          ) : null}
 
           <Text style={[styles.targetLabel, { color: palette.textMuted }]}>
             {i18n._('text.translation')}
