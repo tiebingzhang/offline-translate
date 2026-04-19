@@ -142,6 +142,72 @@ msgstr "Recording metadata"
 msgid "a11y.openHistory"
 msgstr "Open translation history"
 
+msgid "a11y.openDevPanel"
+msgstr "Open developer panel"
+
+msgid "devPanel.section.mode"
+msgstr "Developer mode"
+
+msgid "devPanel.section.backendUrl"
+msgstr "Backend URL"
+
+msgid "devPanel.section.rawResponse"
+msgstr "Raw response"
+
+msgid "devPanel.section.eventLog"
+msgstr "Event log"
+
+msgid "devPanel.section.preview"
+msgstr "Captured audio"
+
+msgid "devPanel.section.filePicker"
+msgstr "Upload from file"
+
+msgid "devPanel.mode.title"
+msgstr "Developer mode"
+
+msgid "devPanel.mode.hint"
+msgstr "Shows the diagnostic panels below. Off by default."
+
+msgid "devPanel.backendUrl.title"
+msgstr "Backend URL override"
+
+msgid "devPanel.backendUrl.hint"
+msgstr "Point uploads at a different BFF. Leave blank to use the build-time default."
+
+msgid "devPanel.backendUrl.save"
+msgstr "Save"
+
+msgid "devPanel.backendUrl.invalid"
+msgstr "Enter a valid http(s) URL."
+
+msgid "devPanel.rawResponse.hint"
+msgstr "The most recent terminal-state response from the BFF. Cleared when you start a new recording."
+
+msgid "devPanel.rawResponse.empty"
+msgstr "No response yet."
+
+msgid "devPanel.eventLog.hint"
+msgstr "In-memory log for the current session. Up to 500 entries."
+
+msgid "devPanel.eventLog.empty"
+msgstr "No events yet."
+
+msgid "devPanel.eventLog.clear"
+msgstr "Clear"
+
+msgid "devPanel.preview.hint"
+msgstr "Play the most recent captured clip without sending it to the server."
+
+msgid "devPanel.preview.trigger"
+msgstr "Preview"
+
+msgid "devPanel.filePicker.hint"
+msgstr "Pick an m4a or wav file from storage and run it through the pipeline instead of a live recording."
+
+msgid "devPanel.filePicker.trigger"
+msgstr "Pick audio file"
+
 msgid "recording.releaseHint"
 msgstr "Release to send"
 

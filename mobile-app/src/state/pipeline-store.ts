@@ -6,6 +6,7 @@ import {
   isTranslationError,
   type BffClient,
   type Direction,
+  type JobState,
   type TranslationResult,
 } from '@/api/bff-client';
 import { defaultPlayer } from '@/audio/player';
@@ -33,14 +34,17 @@ function resolveBaseUrl(): string {
   return override && override.trim().length > 0 ? override : DEFAULT_BFF_BASE_URL;
 }
 
-let clientCache: { baseUrl: string; client: BffClient } | null = null;
+// FR-022 per-call resolution: construct one client that reads the override on
+// every request via the getter. Tests still reset this via
+// resetBffClientCacheForTests to rebuild the mocked createBffClient result.
+// (001-wolof-translate-mobile:T095)
+let cachedClient: BffClient | null = null;
 
 function getClient(): BffClient {
-  const baseUrl = resolveBaseUrl();
-  if (!clientCache || clientCache.baseUrl !== baseUrl) {
-    clientCache = { baseUrl, client: createBffClient({ baseUrl }) };
+  if (!cachedClient) {
+    cachedClient = createBffClient({ baseUrl: resolveBaseUrl });
   }
-  return clientCache.client;
+  return cachedClient;
 }
 
 interface PipelineStoreActions {
@@ -50,9 +54,27 @@ interface PipelineStoreActions {
   discard: () => void;
   retry: () => Promise<void>;
   resumePendingJob: (job: PendingJob) => Promise<void>;
+  // Dev-panel entry point (FR-015b): run an arbitrary audio file through the
+  // same upload/poll path a live recording uses. Skips the 'recording' phase
+  // and lands directly in 'uploading'. The duration is supplied by the caller
+  // since we don't decode the file here.
+  // (001-wolof-translate-mobile:T092)
+  uploadFromFile: (
+    fileUri: string,
+    direction: Direction,
+    durationSec: number,
+  ) => Promise<void>;
 }
 
-type PipelineStore = PipelineState & PipelineStoreActions;
+// FR-015c: retain the last terminal-or-current JobState wire payload so the
+// dev panel can expose it verbatim. Separated from the reducer state because
+// it is a debugging surface, not part of the pipeline state machine.
+// (001-wolof-translate-mobile:T093)
+interface PipelineDiagnosticState {
+  lastJobState: JobState | null;
+}
+
+type PipelineStore = PipelineState & PipelineStoreActions & PipelineDiagnosticState;
 
 export const usePipelineStore = create<PipelineStore>((set, get) => {
   const dispatch = (action: PipelineAction) => {
@@ -111,6 +133,13 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
     try {
       let terminal: TranslationResult | null = null;
       for await (const state of client.pollUntilTerminal(requestId, { timeoutAtMs })) {
+        // Record every yielded JobState so the dev panel can inspect the
+        // latest wire payload even mid-flight, not just the terminal one.
+        // (001-wolof-translate-mobile:T093)
+        set({ lastJobState: state });
+        log('info', 'pipeline', `phase=${state.status} stage=${state.stage}`, {
+          requestId,
+        });
         dispatch({
           type: 'pollStage',
           stage: state.stage,
@@ -215,8 +244,14 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
 
   return {
     ...initialPipelineState,
+    lastJobState: null,
 
     pressStart: (direction) => {
+      // FR-015c: a new session starts a clean diagnostic slate; drop any
+      // lingering JobState from a prior run so the dev panel never shows
+      // stale raw-response data across sessions.
+      // (001-wolof-translate-mobile:T093)
+      set({ lastJobState: null });
       dispatch({ type: 'pressStart', direction });
     },
 
@@ -242,6 +277,7 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
     discard: () => {
       defaultPlayer.stop();
       const requestId = get().requestId;
+      set({ lastJobState: null });
       dispatch({ type: 'discard' });
       if (requestId) {
         void pendingJobsRepo.delete(requestId).catch(() => undefined);
@@ -282,9 +318,33 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
       dispatch({ type: 'uploadAccepted', requestId: job.requestId, pollAfterMs: 500 });
       await drainPoll(job.requestId, job.timeoutAtMs);
     },
+
+    uploadFromFile: async (fileUri, direction, durationSec) => {
+      // FR-015b entry point: feed a file-picked URI into the same pipeline the
+      // live recorder uses. We synthesize the pressStart/pressRelease pair
+      // locally so the reducer's 'uploading' phase rules remain authoritative
+      // and no bespoke branch is introduced in runPipelineFromUpload.
+      // (001-wolof-translate-mobile:T092)
+      if (get().phase !== 'idle' && get().phase !== 'completed') return;
+      if (get().phase === 'completed') {
+        dispatch({ type: 'discard' });
+      }
+      const nowMs = Date.now();
+      const startedAtMs = nowMs - durationSec * 1000;
+      dispatch({ type: 'pressStart', direction });
+      dispatch({
+        type: 'pressRelease',
+        capturedUri: fileUri,
+        durationSec,
+        startedAtMs,
+        uploadStartedAtMs: nowMs,
+      });
+      log('info', 'dev-panel', 'uploadFromFile start', { fileUri, direction });
+      await runPipelineFromUpload(fileUri, direction, startedAtMs, durationSec);
+    },
   };
 });
 
 export function resetBffClientCacheForTests(): void {
-  clientCache = null;
+  cachedClient = null;
 }

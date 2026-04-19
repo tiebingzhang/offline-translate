@@ -297,25 +297,25 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 
 ### Mock-first UI
 
-- [ ] T085 [US3] Create `mobile-app/src/components/DevPanelSheet.tsx` as a visual mock: dev-toggle, server URL text input, raw response code block, event log scrollable list with Clear button, file-picker trigger button; fixture data only
-- [ ] T086 [US3] Update `mobile-app/app/dev-panel.tsx` to host `DevPanelSheet` as the modal content
-- [ ] T087 [US3] Add a developer-mode access affordance in `mobile-app/app/index.tsx` — a small toggle in the top app bar visible to all users (per `spec.md` §Clarifications #1 reading; `FR-014` allows visible toggle, only panels are gated)
-- [ ] T088 [M] [US3] MANUAL: User reviews and approves the Dev Panel mock — discoverability of the toggle, panel layout, copy. No US3 business-logic task below starts until approved.
+- [X] T085 [US3] Create `mobile-app/src/components/DevPanelSheet.tsx` as a visual mock: dev-toggle, server URL text input, raw response code block, event log scrollable list with Clear button, file-picker trigger button; fixture data only
+- [X] T086 [US3] Update `mobile-app/app/dev-panel.tsx` to host `DevPanelSheet` as the modal content
+- [X] T087 [US3] Add a developer-mode access affordance in `mobile-app/app/index.tsx` — a small toggle in the top app bar visible to all users (per `spec.md` §Clarifications #1 reading; `FR-014` allows visible toggle, only panels are gated)
+- [X] T088 [M] [US3] MANUAL: User reviews and approves the Dev Panel mock — discoverability of the toggle, panel layout, copy. No US3 business-logic task below starts until approved. (approved 2026-04-18)
 
 ### Tests
 
-- [ ] T089 [P] [US3] Create `mobile-app/src/components/__tests__/DevPanelSheet.test.tsx` — dev-toggle flips `settings-store.devModeEnabled`; backend URL input is validated (URL parse) and persisted; Clear button empties `dev-log-store`; file-picker trigger calls `expo-document-picker.getDocumentAsync`
-- [ ] T090 [P] [US3] Create `mobile-app/src/state/__tests__/settings-store.test.ts` — `devModeEnabled` + `backendUrlOverride` survive a simulated cold re-hydration (FR-016)
+- [X] T089 [P] [US3] Create `mobile-app/src/components/__tests__/DevPanelSheet.test.tsx` — dev-toggle flips `settings-store.devModeEnabled`; backend URL input is validated (URL parse) and persisted; Clear button empties `dev-log-store`; file-picker trigger calls `expo-document-picker.getDocumentAsync`
+- [X] T090 [P] [US3] Create `mobile-app/src/state/__tests__/settings-store.test.ts` — `devModeEnabled` + `backendUrlOverride` survive a simulated cold re-hydration (FR-016)
 
 ### Implementation
 
-- [ ] T091 [US3] Implement FR-015a audio preview in `DevPanelSheet`: "Preview" button plays the currently-captured audio (if any) via `expo-audio` without uploading
-- [ ] T092 [US3] Implement FR-015b file-from-disk upload: integrate `expo-document-picker` to select an `m4a`/`wav` file, then feed the result into `pipeline-store` the same way a live recording does
-- [ ] T093 [US3] Implement FR-015c raw-response view: `pipeline-store` retains the last `JobState` wire payload; `DevPanelSheet` renders it in a monospaced code block
-- [ ] T094 [US3] Implement FR-015d event log: `DevPanelSheet` binds to `useDevLogStore` with a `FlatList`; Clear action invokes `useDevLogStore.getState().clear()`
-- [ ] T095 [US3] Implement FR-015e backend URL editor: `DevPanelSheet` form writes to `settings-store.backendUrlOverride`; `bff-client.ts` reads the override on every request (FR-022)
-- [ ] T096 [US3] Verify FR-014 + FR-016 persistence in `app/_layout.tsx`: dev-mode state and URL override are loaded on launch before the first navigation
-- [ ] T097 [P] [US3] Create `mobile-app/maestro/flows/us3-dev-mode.yaml` — enable dev mode → change backend URL → next upload goes to new URL → toggle dev mode off → panels hidden; cold-relaunch preserves the toggle state
+- [X] T091 [US3] Implement FR-015a audio preview in `DevPanelSheet`: "Preview" button plays the currently-captured audio (if any) via `expo-audio` without uploading
+- [X] T092 [US3] Implement FR-015b file-from-disk upload: integrate `expo-document-picker` to select an `m4a`/`wav` file, then feed the result into `pipeline-store` the same way a live recording does
+- [X] T093 [US3] Implement FR-015c raw-response view: `pipeline-store` retains the last `JobState` wire payload; `DevPanelSheet` renders it in a monospaced code block
+- [X] T094 [US3] Implement FR-015d event log: `DevPanelSheet` binds to `useDevLogStore` with a `FlatList`; Clear action invokes `useDevLogStore.getState().clear()`
+- [X] T095 [US3] Implement FR-015e backend URL editor: `DevPanelSheet` form writes to `settings-store.backendUrlOverride`; `bff-client.ts` reads the override on every request (FR-022)
+- [X] T096 [US3] Verify FR-014 + FR-016 persistence in `app/_layout.tsx`: dev-mode state and URL override are loaded on launch before the first navigation
+- [X] T097 [P] [US3] Create `mobile-app/maestro/flows/us3-dev-mode.yaml` — enable dev mode → change backend URL → next upload goes to new URL → toggle dev mode off → panels hidden; cold-relaunch preserves the toggle state
 - [ ] T098 [Commit] `001-wolof-translate-mobile:Phase6-US3: developer diagnostic panel`
 
 **Checkpoint**: US1 + US2 + US3 + US4 all independently functional.

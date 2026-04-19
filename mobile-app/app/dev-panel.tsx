@@ -1,12 +1,18 @@
-import { i18n } from '@lingui/core';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 
-import { lightPalette, spacing, typography } from '@/design/tokens';
+import DevPanelSheet from '@/components/DevPanelSheet';
+import { paletteForScheme } from '@/design/tokens';
 
+// Thin route host — the sheet owns all content per the mock-first slice.
+// expo-router header/presentation options are configured in app/_layout.tsx's
+// <Stack.Screen name="dev-panel" ... /> so they stay intact.
+// (001-wolof-translate-mobile:T086)
 export default function DevPanelScreen() {
+  const palette = paletteForScheme(useColorScheme());
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>{i18n._('screen.devPanel')}</Text>
+    <View style={[styles.container, { backgroundColor: palette.base }]}>
+      <DevPanelSheet />
     </View>
   );
 }
@@ -14,15 +20,5 @@ export default function DevPanelScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-    backgroundColor: lightPalette.base,
-  },
-  heading: {
-    fontFamily: typography.heading.fontFamily,
-    fontWeight: typography.heading.fontWeight,
-    fontSize: typography.heading.sizes.lg,
-    color: lightPalette.text,
   },
 });

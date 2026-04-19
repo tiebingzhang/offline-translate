@@ -143,6 +143,27 @@ export default function MainScreen() {
             >
               <Ionicons name="time-outline" size={22} color={palette.text} />
             </Pressable>
+            {/* Always-visible Dev Panel affordance per spec.md §Clarifications
+                #1 reading — the toggle itself is visible to all users; the
+                panels it reveals remain gated by devModeEnabled (wired in
+                T091+). This mock slice is navigation-only.
+                (001-wolof-translate-mobile:T087) */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={i18n._('a11y.openDevPanel')}
+              testID="MainScreen.devPanelButton"
+              onPress={() => router.push('/dev-panel')}
+              style={({ pressed }) => [
+                styles.historyIcon,
+                {
+                  backgroundColor: palette.surfaceElevated,
+                  borderColor: palette.border,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="construct-outline" size={22} color={palette.text} />
+            </Pressable>
           </View>
         </View>
 

@@ -111,7 +111,11 @@ export interface TranslationResult {
 }
 
 export interface BffClientConfig {
-  baseUrl: string;
+  // Accepts either a static string (for tests and fallback) or a getter that
+  // reads the current override on every call (FR-022). Pipeline-store wires
+  // this to useSettingsStore.getState().backendUrlOverride ?? BUILD_DEFAULT.
+  // (001-wolof-translate-mobile:T095)
+  baseUrl: string | (() => string);
   nowMs?: () => number;
   sleepMs?: (ms: number) => Promise<void>;
   fetchImpl?: typeof fetch;
@@ -202,7 +206,14 @@ function toJobError(wire: JobErrorWire): JobError {
 }
 
 export function createBffClient(config: BffClientConfig): BffClient {
-  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+  // FR-022: resolve the base URL at every call-site rather than capturing it
+  // at construction time, so a runtime override flip takes effect on the very
+  // next upload/poll without needing to rebuild the client.
+  // (001-wolof-translate-mobile:T095)
+  const resolveBase = typeof config.baseUrl === 'function'
+    ? (config.baseUrl as () => string)
+    : () => config.baseUrl as string;
+  const currentBase = (): string => resolveBase().replace(/\/+$/, '');
   const nowMs = config.nowMs ?? (() => Date.now());
   const sleepMs = config.sleepMs ?? defaultSleep;
   const fetchImpl = config.fetchImpl ?? fetch;
@@ -213,7 +224,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
     direction: Direction,
     opts?: PostTranslateSpeakOpts,
   ): Promise<UploadAccepted> {
-    const url = joinUrl(baseUrl, '/api/translate-speak');
+    const url = joinUrl(currentBase(), '/api/translate-speak');
     const fsOptions = {
       httpMethod: 'POST' as const,
       fieldName: 'file',
@@ -301,7 +312,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
     requestId: string,
     opts: { timeoutAtMs: number },
   ): AsyncGenerator<JobState, void, void> {
-    const url = joinUrl(baseUrl, `/api/requests/${requestId}`);
+    const url = joinUrl(currentBase(), `/api/requests/${requestId}`);
     let attempt = 0;
     let hasYielded = false;
     let lastDelayMs = 0;
@@ -405,7 +416,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
   }
 
   async function downloadAudioImpl(requestId: string): Promise<string | null> {
-    const url = joinUrl(baseUrl, `/api/requests/${requestId}/audio`);
+    const url = joinUrl(currentBase(), `/api/requests/${requestId}/audio`);
     const target = `${audioDir.replace(/\/+$/, '')}/${requestId}.m4a`;
     try {
       await makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => undefined);
@@ -420,7 +431,7 @@ export function createBffClient(config: BffClientConfig): BffClient {
   }
 
   async function checkHealth(): Promise<{ status: 'ok' }> {
-    const res = await fetchImpl(joinUrl(baseUrl, '/api/health'));
+    const res = await fetchImpl(joinUrl(currentBase(), '/api/health'));
     const text = await res.text();
     const parsed = parseJsonSafely<{ status: 'ok' }>(text);
     if (!parsed || parsed.status !== 'ok') {
