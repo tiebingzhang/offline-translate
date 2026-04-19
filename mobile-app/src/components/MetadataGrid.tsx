@@ -2,6 +2,7 @@ import { i18n } from '@lingui/core';
 import { StyleSheet, Text, View, useColorScheme } from 'react-native';
 
 import { paletteForScheme, radii, spacing, typography } from '@/design/tokens';
+import { formatNumber } from '@/utils/formatters';
 
 import type { Direction } from './DirectionButton';
 
@@ -21,14 +22,20 @@ export function MetadataGrid(props: MetadataGridProps) {
   const { durationSec, sampleRateHz, channels, direction } = props;
   const palette = paletteForScheme(useColorScheme());
 
+  // FR-036 — locale-aware number formatting for the duration (1 decimal) and
+  // integer sample rate; the i18n templates still provide the unit suffixes.
+  // (001-wolof-translate-mobile:T119a)
+  const durationRounded = Math.round(durationSec * 10) / 10;
   const cells: Array<{ label: string; value: string }> = [
     {
       label: i18n._('metadata.duration'),
-      value: i18n._('metadata.durationValue', { seconds: durationSec.toFixed(1) }),
+      value: i18n._('metadata.durationValue', {
+        seconds: formatNumber(durationRounded),
+      }),
     },
     {
       label: i18n._('metadata.sampleRate'),
-      value: i18n._('metadata.sampleRateValue', { hz: sampleRateHz.toLocaleString() }),
+      value: i18n._('metadata.sampleRateValue', { hz: formatNumber(sampleRateHz) }),
     },
     {
       label: i18n._('metadata.channels'),

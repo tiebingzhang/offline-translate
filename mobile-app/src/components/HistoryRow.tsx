@@ -4,6 +4,7 @@ import { RectButton, Swipeable } from 'react-native-gesture-handler';
 
 import type { Direction } from '@/api/bff-client';
 import { hitTargets, paletteForScheme, radii, spacing, typography } from '@/design/tokens';
+import { formatDate } from '@/utils/formatters';
 
 export interface HistoryEntry {
   id: number;
@@ -27,10 +28,10 @@ export function HistoryRow({ entry, onReplay, onDelete }: HistoryRowProps) {
   const directionLabel = i18n._(`direction.${entry.direction}`);
 
   // FR-025 — VoiceOver hears direction + createdAt timestamp so users can
-  // distinguish entries. Locale-aware date formatting lives in T119a; for
-  // now use an ISO-style fallback that still reads cleanly.
-  // (001-wolof-translate-mobile:T108)
-  const timestamp = new Date(entry.createdAtMs).toLocaleString();
+  // distinguish entries. FR-036 — timestamp is rendered via the shared
+  // locale-aware formatter.
+  // (001-wolof-translate-mobile:T108, T119a)
+  const timestamp = formatDate(entry.createdAtMs);
   const a11yLabel = i18n._('a11y.historyRow.label', {
     direction: directionLabel,
     timestamp,

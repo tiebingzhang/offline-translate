@@ -12,6 +12,7 @@ import { paletteForScheme, spacing, typography } from '@/design/tokens';
 import { stepLabel, type StepMessageKey } from '@/pipeline/step-label';
 import type { PipelinePhase } from '@/pipeline/state-machine';
 import { usePipelineStore } from '@/state/pipeline-store';
+import { formatNumber } from '@/utils/formatters';
 
 export type StepLabelKey = StepMessageKey;
 
@@ -29,9 +30,13 @@ export function PipelineStatusBarView(props: PipelineStatusBarViewProps) {
   if (!visible) return null;
 
   const clamped = Math.max(0, Math.floor(secondsLeft));
+  // FR-036 — render the seconds integer via the shared locale-aware formatter
+  // so devices with non-ASCII digits (e.g. fa-IR) render natively.
+  // (001-wolof-translate-mobile:T119a)
+  const clampedLocalized = formatNumber(clamped);
   const label = i18n._(stepLabelKey);
-  const countdown = i18n._('step.countdown', { seconds: clamped });
-  const a11y = i18n._('step.a11y', { label, seconds: clamped });
+  const countdown = i18n._('step.countdown', { seconds: clampedLocalized });
+  const a11y = i18n._('step.a11y', { label, seconds: clampedLocalized });
 
   return (
     <View
