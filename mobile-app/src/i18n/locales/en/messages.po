@@ -130,11 +130,41 @@ msgstr "Delete this translation"
 msgid "a11y.directionButton"
 msgstr "Translate button"
 
+msgid "a11y.directionButton.label"
+msgstr "{direction} translate button"
+
+msgid "a11y.directionButton.hint.press"
+msgstr "Press and hold to record, release to send."
+
+msgid "a11y.directionButton.hint.tap"
+msgstr "Tap to start recording, tap again to send."
+
+msgid "a11y.directionButton.hint.stop"
+msgstr "Recording. Tap or release to send."
+
 msgid "a11y.statusPill"
 msgstr "Current pipeline status"
 
+msgid "a11y.statusPill.label"
+msgstr "Translation status: {stage}"
+
 msgid "a11y.retryBanner"
 msgstr "Translation error"
+
+msgid "a11y.retryBanner.label"
+msgstr "Translation error alert"
+
+msgid "a11y.retryBanner.hint"
+msgstr "Double-tap Retry to try again, or Discard to dismiss."
+
+msgid "a11y.historyRow.label"
+msgstr "{direction} on {timestamp}. Source: {source}. Translation: {target}."
+
+msgid "a11y.settingsSheet.label"
+msgstr "Settings"
+
+msgid "a11y.devPanelSheet.label"
+msgstr "Developer panel"
 
 msgid "a11y.metadataGrid"
 msgstr "Recording metadata"
@@ -144,6 +174,18 @@ msgstr "Open translation history"
 
 msgid "a11y.openDevPanel"
 msgstr "Open developer panel"
+
+msgid "a11y.openSettings"
+msgstr "Open settings"
+
+msgid "settings.title"
+msgstr "Settings"
+
+msgid "settings.tapMode.label"
+msgstr "Tap mode"
+
+msgid "settings.tapMode.description"
+msgstr "Tap a direction button once to start recording, then tap again to stop. Turn this off to use press-and-hold."
 
 msgid "devPanel.section.mode"
 msgstr "Developer mode"
@@ -210,6 +252,9 @@ msgstr "Pick audio file"
 
 msgid "recording.releaseHint"
 msgstr "Release to send"
+
+msgid "recording.tapToStop"
+msgstr "Tap to send"
 
 msgid "recording.elapsed"
 msgstr "{seconds}s"

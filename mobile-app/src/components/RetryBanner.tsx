@@ -89,7 +89,8 @@ export function RetryBanner(props: RetryBannerProps) {
 
   return (
     <View
-      accessibilityLabel={i18n._('a11y.retryBanner')}
+      accessibilityLabel={i18n._('a11y.retryBanner.label')}
+      accessibilityHint={i18n._('a11y.retryBanner.hint')}
       accessibilityRole="alert"
       testID={`RetryBanner.${key}`}
       style={[

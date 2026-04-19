@@ -19,6 +19,7 @@ import MetadataGrid from '@/components/MetadataGrid';
 import PipelineStatusBar, { BAR_HEIGHT } from '@/components/PipelineStatusBar';
 import RetryBanner from '@/components/RetryBanner';
 import StatusPill from '@/components/StatusPill';
+import BackgroundPattern from '@/design/BackgroundPattern';
 import { paletteForScheme, radii, spacing, typography } from '@/design/tokens';
 import { useRecorder } from '@/audio/recorder';
 import { usePipelineStore } from '@/state/pipeline-store';
@@ -110,6 +111,7 @@ export default function MainScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.base }]}>
+      <BackgroundPattern>
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -163,6 +165,25 @@ export default function MainScreen() {
               ]}
             >
               <Ionicons name="construct-outline" size={22} color={palette.text} />
+            </Pressable>
+            {/* FR-028a Settings entry point — always visible, distinct
+                from the developer panel. Opens the SettingsSheet modal.
+                (001-wolof-translate-mobile:T105) */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={i18n._('a11y.openSettings')}
+              testID="MainScreen.settingsButton"
+              onPress={() => router.push('/settings')}
+              style={({ pressed }) => [
+                styles.historyIcon,
+                {
+                  backgroundColor: palette.surfaceElevated,
+                  borderColor: palette.border,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="settings-outline" size={22} color={palette.text} />
             </Pressable>
           </View>
         </View>
@@ -265,6 +286,7 @@ export default function MainScreen() {
       <View style={styles.barAnchor} pointerEvents="box-none">
         <PipelineStatusBar />
       </View>
+      </BackgroundPattern>
     </SafeAreaView>
   );
 }

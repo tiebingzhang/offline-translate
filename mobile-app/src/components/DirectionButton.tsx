@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 
 import { hitTargets, paletteForScheme, radii, spacing, typography } from '@/design/tokens';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { useSettingsStore } from '@/state/settings-store';
 
 export type Direction = 'english_to_wolof' | 'wolof_to_english';
 
@@ -50,9 +52,14 @@ export function DirectionButton(props: DirectionButtonProps) {
 
   const palette = paletteForScheme(useColorScheme());
   const pulse = useRef(new Animated.Value(0)).current;
+  const tapMode = useSettingsStore((s) => s.tapMode);
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
-    if (!recording) {
+    // FR-032: skip the pulse loop entirely when reduce-motion is enabled; the
+    // recording state is still conveyed by the background color + text hint.
+    // (001-wolof-translate-mobile:T111)
+    if (!recording || reduceMotion) {
       pulse.setValue(0);
       return;
     }
@@ -74,7 +81,7 @@ export function DirectionButton(props: DirectionButtonProps) {
     );
     loop.start();
     return () => loop.stop();
-  }, [recording, pulse]);
+  }, [recording, pulse, reduceMotion]);
 
   const pulseStyle = useMemo(
     () => ({
@@ -91,19 +98,39 @@ export function DirectionButton(props: DirectionButtonProps) {
     [pulse],
   );
 
-  const handlePressIn = () => {
-    if (disabled) return;
+  const fireHaptic = () => {
     try {
       Haptics.selectionAsync();
     } catch {
       // Haptics not available on simulator — safe to ignore.
     }
+  };
+
+  // FR-028: in press-and-hold mode we wire onPressIn/onPressOut directly so
+  // the recorder starts and stops with the physical press. In tap mode we
+  // ignore the raw in/out events and drive the same callbacks from a discrete
+  // onPress handler that toggles based on the caller's `recording` prop —
+  // downstream pipeline actions (pressStart / pressRelease / runPipeline) stay
+  // identical across both modes. (001-wolof-translate-mobile:T107)
+  const handlePressIn = () => {
+    if (disabled || tapMode) return;
+    fireHaptic();
     onPressIn?.();
   };
 
   const handlePressOut = () => {
-    if (disabled) return;
+    if (disabled || tapMode) return;
     onPressOut?.();
+  };
+
+  const handlePress = () => {
+    if (disabled || !tapMode) return;
+    fireHaptic();
+    if (recording) {
+      onPressOut?.();
+    } else {
+      onPressIn?.();
+    }
   };
 
   const title = i18n._(DIRECTION_LABEL_KEY[direction]);
@@ -118,14 +145,26 @@ export function DirectionButton(props: DirectionButtonProps) {
   const backgroundColor = isActive ? palette.accentDeep : palette.accent;
   const textColor = palette.accentOn;
 
+  // FR-025 accessibility strings — hint varies by input mode so VoiceOver
+  // announces the correct gesture. The recording-state hint is a distinct
+  // key so it translates cleanly without interpolation.
+  // (001-wolof-translate-mobile:T108)
+  const a11yLabel = i18n._('a11y.directionButton.label', { direction: title });
+  const a11yHint = recording
+    ? i18n._('a11y.directionButton.hint.stop')
+    : tapMode
+      ? i18n._('a11y.directionButton.hint.tap')
+      : i18n._('a11y.directionButton.hint.press');
+
   return (
-    <Animated.View style={[styles.outer, recording ? pulseStyle : null]}>
+    <Animated.View style={[styles.outer, recording && !reduceMotion ? pulseStyle : null]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={i18n._('a11y.directionButton')}
-        accessibilityHint={hint}
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={a11yHint}
         accessibilityState={{ disabled, busy: recording }}
         disabled={disabled}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         style={({ pressed: isPressed }) => [
@@ -141,7 +180,11 @@ export function DirectionButton(props: DirectionButtonProps) {
           {title}
         </Text>
         <Text style={[styles.hint, { color: textColor }]} numberOfLines={2}>
-          {recording ? i18n._('recording.releaseHint') : hint}
+          {recording
+            ? tapMode
+              ? i18n._('recording.tapToStop')
+              : i18n._('recording.releaseHint')
+            : hint}
         </Text>
         {recording ? (
           <View style={styles.meta}>

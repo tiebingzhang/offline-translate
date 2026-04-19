@@ -51,10 +51,14 @@ export function StatusPill(props: StatusPillProps) {
   const showProgress =
     uploadProgress != null && uploadProgress >= 0 && uploadProgress <= 1;
 
+  // FR-025 — VoiceOver announces the current stage verbatim.
+  // (001-wolof-translate-mobile:T108)
+  const a11yLabel = i18n._('a11y.statusPill.label', { stage: label });
+
   return (
     <View
       accessibilityRole="text"
-      accessibilityLabel={i18n._('a11y.statusPill')}
+      accessibilityLabel={a11yLabel}
       style={[
         styles.pill,
         {

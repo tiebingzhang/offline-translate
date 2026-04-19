@@ -26,8 +26,14 @@ export function HistoryRow({ entry, onReplay, onDelete }: HistoryRowProps) {
   const palette = paletteForScheme(useColorScheme());
   const directionLabel = i18n._(`direction.${entry.direction}`);
 
-  const a11yLabel = i18n._('history.a11y.row', {
+  // FR-025 — VoiceOver hears direction + createdAt timestamp so users can
+  // distinguish entries. Locale-aware date formatting lives in T119a; for
+  // now use an ISO-style fallback that still reads cleanly.
+  // (001-wolof-translate-mobile:T108)
+  const timestamp = new Date(entry.createdAtMs).toLocaleString();
+  const a11yLabel = i18n._('a11y.historyRow.label', {
     direction: directionLabel,
+    timestamp,
     source: entry.transcribedText,
     target: entry.translatedText,
   });

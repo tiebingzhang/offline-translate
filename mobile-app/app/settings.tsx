@@ -1,12 +1,21 @@
-import { i18n } from '@lingui/core';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 
-import { lightPalette, spacing, typography } from '@/design/tokens';
+import SettingsSheet from '@/components/SettingsSheet';
+import BackgroundPattern from '@/design/BackgroundPattern';
+import { paletteForScheme } from '@/design/tokens';
 
+// Thin route host — the sheet owns all content per the mock-first slice.
+// expo-router header/presentation options are configured in
+// app/_layout.tsx's <Stack.Screen name="settings" ... /> and stay intact.
+// (001-wolof-translate-mobile:T104)
 export default function SettingsScreen() {
+  const palette = paletteForScheme(useColorScheme());
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>{i18n._('screen.settings')}</Text>
+    <View style={[styles.container, { backgroundColor: palette.base }]}>
+      <BackgroundPattern>
+        <SettingsSheet />
+      </BackgroundPattern>
     </View>
   );
 }
@@ -14,15 +23,5 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-    backgroundColor: lightPalette.base,
-  },
-  heading: {
-    fontFamily: typography.heading.fontFamily,
-    fontWeight: typography.heading.fontWeight,
-    fontSize: typography.heading.sizes.lg,
-    color: lightPalette.text,
   },
 });

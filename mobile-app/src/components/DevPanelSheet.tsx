@@ -222,6 +222,7 @@ export function DevPanelSheet(_props: DevPanelSheetProps = {}) {
       style={[styles.screen, { backgroundColor: palette.base }]}
       contentContainerStyle={styles.screenContent}
       testID="DevPanelSheet"
+      accessibilityLabel={i18n._('a11y.devPanelSheet.label')}
     >
       {/* Section 1 — Developer-mode switch (FR-014)
           (001-wolof-translate-mobile:T095) */}

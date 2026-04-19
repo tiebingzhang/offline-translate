@@ -60,11 +60,17 @@ describe('HistoryRow', () => {
     expect(onDelete).toHaveBeenCalledWith(testEntry);
   });
 
-  test('composes an accessibility label including direction, source, and target', () => {
+  test('composes an accessibility label including direction, timestamp, source, and target (T108)', () => {
     const { getByLabelText } = render(
       <HistoryRow entry={testEntry} onReplay={jest.fn()} onDelete={jest.fn()} />,
     );
-    const label = 'English → Wolof. You said: Good morning. Translation: Naka nga def.';
-    expect(getByLabelText(label)).toBeTruthy();
+    // Timestamp formatting is locale-dependent; assert on the structural
+    // bookends and the source / target substrings instead of a full string
+    // match. (001-wolof-translate-mobile:T108)
+    expect(
+      getByLabelText(
+        /^English → Wolof on .+\. Source: Good morning\. Translation: Naka nga def\.$/,
+      ),
+    ).toBeTruthy();
   });
 });
