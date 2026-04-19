@@ -368,7 +368,7 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 - [X] T121 [P] Update `mobile-app/CLAUDE.md` with any agent-context drift discovered during Phases 3–7 (run `.specify/scripts/bash/update-agent-context.sh claude`)
 - [X] T122 [P] Update `mobile-app/README.md` with the `quickstart.md` essentials + TestFlight build steps; link to spec + plan
 - [ ] T123 TestFlight build: `eas build --profile production --platform ios`; confirm the build validates with no ATS exceptions; run smoke tests (US1 happy path + US2 offline replay) on an enrolled tester device
-- [ ] T124 [Commit] `001-wolof-translate-mobile:Phase8-Polish: v1 polish + TestFlight readiness`
+- [X] T124 [Commit] `001-wolof-translate-mobile:Phase8-Polish: v1 polish + TestFlight readiness`
 
 ---
 
