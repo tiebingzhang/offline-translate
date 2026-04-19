@@ -1,0 +1,48 @@
+# Phase 5 / US4 — background upload survives app suspension (FR-006a)
+# (001-wolof-translate-mobile:T081)
+#
+# Tests: record a 5 s phrase → background the app immediately → wait 8 s for
+# the iOS URLSession background task to deliver the upload + the BFF to finish
+# → foreground the app → assert the completed translation is visible.
+appId: com.cryingaffrica.wolofTranslate
+name: US4 — Background upload survives suspension
+tags:
+  - us4
+  - reliability
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Wolof Translate"
+- assertVisible: "English → Wolof"
+
+# Press-and-hold for 5 s while the tester speaks a short phrase
+- longPressOn:
+    text: "English → Wolof"
+    duration: 5000
+
+# FR-003a: bottom pipeline status bar appears once the pipeline leaves idle
+- assertVisible:
+    id: "PipelineStatusBar"
+    timeout: 3000
+
+# Immediately background the app — this is the FR-006a stress: iOS suspends
+# the JS context, but the URLSession background upload should keep going.
+- pressKey: HOME
+
+# Give the BFF the typical SC-001 budget (≤ 10 s) plus a small cushion to
+# transcribe + translate + speech-synthesize while the app is backgrounded.
+- waitForAnimationToEnd:
+    timeout: 8000
+
+# Resume the app — the in-flight job should have completed in the background
+# and the result should be visible without re-recording.
+- launchApp
+- assertVisible:
+    text: "You said"
+    timeout: 6000
+- assertVisible:
+    text: "Translation"
+    timeout: 6000
+- assertVisible:
+    text: "Done"
+    timeout: 8000

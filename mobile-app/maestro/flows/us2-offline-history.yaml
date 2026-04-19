@@ -1,0 +1,54 @@
+# US2 offline history E2E
+# Prereq: app built with a reachable BFF; US1 has completed at least one
+# successful english_to_wolof translation in the same session, OR you seed
+# history.db with a fixture row before launch. (001-wolof-translate-mobile:T074)
+appId: com.cryingaffrica.wolof-translate
+---
+- launchApp
+- assertVisible: "Wolof Translate"
+
+# Complete one translation end-to-end so a history row exists
+- longPressOn:
+    text: "English → Wolof"
+    duration: 3000
+- extendedWaitUntil:
+    visible:
+      text: "Playing translation"
+    timeout: 15000
+
+# Simulate offline — toggle airplane mode
+- toggleAirplaneMode
+
+# Open History from the top-bar icon
+- tapOn:
+    id: "Open translation history"
+
+- extendedWaitUntil:
+    visible:
+      text: "Replay"
+    timeout: 4000
+
+# SC-007: replay works with zero network requests
+- tapOn:
+    text: "Replay"
+- extendedWaitUntil:
+    visible:
+      text: "Translation"
+    timeout: 5000
+
+# FR-013c: swipe-to-delete removes the row AND its audio
+- swipe:
+    from:
+      id: "Replay"
+    direction: LEFT
+- tapOn:
+    text: "Delete"
+
+# After the only row is deleted, the empty state is shown
+- extendedWaitUntil:
+    visible:
+      text: "No translations yet. Hold a direction button on the main screen to start."
+    timeout: 4000
+
+# Restore network
+- toggleAirplaneMode

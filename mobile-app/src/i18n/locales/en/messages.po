@@ -1,0 +1,341 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-04-16\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Lingui\n"
+"Language: en\n"
+
+msgid "app.name"
+msgstr "Wolof Translate"
+
+msgid "screen.main"
+msgstr "Main"
+
+msgid "screen.history"
+msgstr "History"
+
+msgid "screen.settings"
+msgstr "Settings"
+
+msgid "screen.devPanel"
+msgstr "Developer Panel"
+
+msgid "direction.english_to_wolof"
+msgstr "English → Wolof"
+
+msgid "direction.wolof_to_english"
+msgstr "Wolof → English"
+
+msgid "direction.press.english_to_wolof"
+msgstr "Press and hold to speak English"
+
+msgid "direction.press.wolof_to_english"
+msgstr "Press and hold to speak Wolof"
+
+msgid "stage.queued"
+msgstr "Queued"
+
+msgid "stage.normalizing"
+msgstr "Normalizing audio"
+
+msgid "stage.transcribing"
+msgstr "Transcribing"
+
+msgid "stage.translating"
+msgstr "Translating"
+
+msgid "stage.generating_speech"
+msgstr "Generating speech"
+
+msgid "stage.completed"
+msgstr "Done"
+
+msgid "stage.failed"
+msgstr "Failed"
+
+msgid "error.upload_failed"
+msgstr "Could not reach the server. Your recording is saved."
+
+msgid "error.poll_failed"
+msgstr "Lost connection while translating. Try again."
+
+msgid "error.server_failed"
+msgstr "The server could not finish your translation."
+
+msgid "error.client_timeout"
+msgstr "This is taking too long. Your recording is saved — try again."
+
+msgid "error.malformed_response"
+msgstr "Unexpected response from the server."
+
+msgid "error.microphone_denied"
+msgstr "Microphone access is needed to record. Open Settings to allow it."
+
+msgid "error.timed_out"
+msgstr "This is taking too long. Your recording is saved — try again."
+
+msgid "error.unknown"
+msgstr "Something went wrong. Please try again."
+
+msgid "error.title.upload_failed"
+msgstr "Network problem"
+
+msgid "error.title.poll_failed"
+msgstr "Connection lost"
+
+msgid "error.title.server_failed"
+msgstr "Server problem"
+
+msgid "error.title.client_timeout"
+msgstr "Taking too long"
+
+msgid "error.title.malformed_response"
+msgstr "Unexpected response"
+
+msgid "error.title.timed_out"
+msgstr "Taking too long"
+
+msgid "error.title.unknown"
+msgstr "Something went wrong"
+
+msgid "action.retry"
+msgstr "Retry"
+
+msgid "action.discard"
+msgstr "Discard"
+
+msgid "action.openSettings"
+msgstr "Open Settings"
+
+msgid "history.empty"
+msgstr "No translations yet. Hold a direction button on the main screen to start."
+
+msgid "history.replay"
+msgstr "Replay"
+
+msgid "history.delete"
+msgstr "Delete"
+
+msgid "history.a11y.row"
+msgstr "{direction}. You said: {source}. Translation: {target}."
+
+msgid "history.a11y.replay"
+msgstr "Replay this translation"
+
+msgid "history.a11y.delete"
+msgstr "Delete this translation"
+
+msgid "a11y.directionButton"
+msgstr "Translate button"
+
+msgid "a11y.directionButton.label"
+msgstr "{direction} translate button"
+
+msgid "a11y.directionButton.hint.press"
+msgstr "Press and hold to record, release to send."
+
+msgid "a11y.directionButton.hint.tap"
+msgstr "Tap to start recording, tap again to send."
+
+msgid "a11y.directionButton.hint.stop"
+msgstr "Recording. Tap or release to send."
+
+msgid "a11y.statusPill"
+msgstr "Current pipeline status"
+
+msgid "a11y.statusPill.label"
+msgstr "Translation status: {stage}"
+
+msgid "a11y.retryBanner"
+msgstr "Translation error"
+
+msgid "a11y.retryBanner.label"
+msgstr "Translation error alert"
+
+msgid "a11y.retryBanner.hint"
+msgstr "Double-tap Retry to try again, or Discard to dismiss."
+
+msgid "a11y.historyRow.label"
+msgstr "{direction} on {timestamp}. Source: {source}. Translation: {target}."
+
+msgid "a11y.settingsSheet.label"
+msgstr "Settings"
+
+msgid "a11y.devPanelSheet.label"
+msgstr "Developer panel"
+
+msgid "a11y.metadataGrid"
+msgstr "Recording metadata"
+
+msgid "a11y.openHistory"
+msgstr "Open translation history"
+
+msgid "a11y.openDevPanel"
+msgstr "Open developer panel"
+
+msgid "a11y.openSettings"
+msgstr "Open settings"
+
+msgid "settings.title"
+msgstr "Settings"
+
+msgid "settings.tapMode.label"
+msgstr "Tap mode"
+
+msgid "settings.tapMode.description"
+msgstr "Tap a direction button once to start recording, then tap again to stop. Turn this off to use press-and-hold."
+
+msgid "devPanel.section.mode"
+msgstr "Developer mode"
+
+msgid "devPanel.section.backendUrl"
+msgstr "Backend URL"
+
+msgid "devPanel.section.rawResponse"
+msgstr "Raw response"
+
+msgid "devPanel.section.eventLog"
+msgstr "Event log"
+
+msgid "devPanel.section.preview"
+msgstr "Captured audio"
+
+msgid "devPanel.section.filePicker"
+msgstr "Upload from file"
+
+msgid "devPanel.mode.title"
+msgstr "Developer mode"
+
+msgid "devPanel.mode.hint"
+msgstr "Shows the diagnostic panels below. Off by default."
+
+msgid "devPanel.backendUrl.title"
+msgstr "Backend URL override"
+
+msgid "devPanel.backendUrl.hint"
+msgstr "Point uploads at a different BFF. Leave blank to use the build-time default."
+
+msgid "devPanel.backendUrl.save"
+msgstr "Save"
+
+msgid "devPanel.backendUrl.invalid"
+msgstr "Enter a valid http(s) URL."
+
+msgid "devPanel.rawResponse.hint"
+msgstr "The most recent terminal-state response from the BFF. Cleared when you start a new recording."
+
+msgid "devPanel.rawResponse.empty"
+msgstr "No response yet."
+
+msgid "devPanel.eventLog.hint"
+msgstr "In-memory log for the current session. Up to 500 entries."
+
+msgid "devPanel.eventLog.empty"
+msgstr "No events yet."
+
+msgid "devPanel.eventLog.clear"
+msgstr "Clear"
+
+msgid "devPanel.preview.hint"
+msgstr "Play the most recent captured clip without sending it to the server."
+
+msgid "devPanel.preview.trigger"
+msgstr "Preview"
+
+msgid "devPanel.filePicker.hint"
+msgstr "Pick an m4a or wav file from storage and run it through the pipeline instead of a live recording."
+
+msgid "devPanel.filePicker.trigger"
+msgstr "Pick audio file"
+
+msgid "recording.releaseHint"
+msgstr "Release to send"
+
+msgid "recording.tapToStop"
+msgstr "Tap to send"
+
+msgid "recording.elapsed"
+msgstr "{seconds}s"
+
+msgid "recording.countdownHint"
+msgstr "Auto-stop in {seconds}s"
+
+msgid "text.source"
+msgstr "You said"
+
+msgid "text.translation"
+msgstr "Translation"
+
+msgid "text.placeholder"
+msgstr "Your translation will appear here."
+
+msgid "metadata.duration"
+msgstr "Duration"
+
+msgid "metadata.durationValue"
+msgstr "{seconds}s"
+
+msgid "metadata.sampleRate"
+msgstr "Sample rate"
+
+msgid "metadata.sampleRateValue"
+msgstr "{hz} Hz"
+
+msgid "metadata.channels"
+msgstr "Channels"
+
+msgid "metadata.channelsMono"
+msgstr "Mono"
+
+msgid "metadata.channelsStereo"
+msgstr "Stereo"
+
+msgid "metadata.direction"
+msgstr "Direction"
+
+msgid "step.idle"
+msgstr ""
+
+msgid "step.uploading"
+msgstr "Uploading recording"
+
+msgid "step.queued"
+msgstr "Queued"
+
+msgid "step.normalizing"
+msgstr "Preparing audio"
+
+msgid "step.transcribing.english"
+msgstr "Transcribing English audio to text"
+
+msgid "step.transcribing.wolof"
+msgstr "Transcribing Wolof audio to text"
+
+msgid "step.translating.english_to_wolof"
+msgstr "Translating English to Wolof"
+
+msgid "step.translating.wolof_to_english"
+msgstr "Translating Wolof to English"
+
+msgid "step.generating_wolof_audio"
+msgstr "Generating Wolof audio"
+
+msgid "step.playing"
+msgstr "Playing translation"
+
+msgid "step.retrying"
+msgstr "Retrying…"
+
+msgid "step.timed_out"
+msgstr "Timed out"
+
+msgid "step.failed"
+msgstr "Failed"
+
+msgid "step.countdown"
+msgstr "{seconds}s remaining"
+
+msgid "step.a11y"
+msgstr "{label} — {seconds} seconds remaining"

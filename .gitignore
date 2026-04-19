@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+#Whisper binaries
+whisper.cpp/
+
+#vibe coding
+.claude/
+.specify/
+.serena/
+
+#local audio cache
+generated_audio/
