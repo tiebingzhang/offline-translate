@@ -330,25 +330,25 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 
 ### Design + Settings sheet
 
-- [ ] T099 [US5] Author Senegalese-textile motif assets (Kente / mudcloth / basket-weave) and place in `mobile-app/assets/patterns/`; developer authorship required per FR-029 (no AI-generated, no generic stock)
-- [ ] T100 [US5] Create `mobile-app/src/design/BackgroundPattern.tsx`: low-opacity (<8 %) overlay using the motif asset per FR-030; conditional on `prefers-reduced-motion`
-- [ ] T101 [US5] Extend `mobile-app/src/design/tokens.ts` with finalized secondary palette (deep indigo, ochre, muted terracotta) and verify light + dark variants across all components already built in Phases 3–6
+- [X] T099 [US5] Author Senegalese-textile motif assets (Kente / mudcloth / basket-weave) and place in `mobile-app/assets/patterns/`; developer authorship required per FR-029 (no AI-generated, no generic stock)
+- [X] T100 [US5] Create `mobile-app/src/design/BackgroundPattern.tsx`: low-opacity (<8 %) overlay using the motif asset per FR-030; conditional on `prefers-reduced-motion`
+- [X] T101 [US5] Extend `mobile-app/src/design/tokens.ts` with finalized secondary palette (deep indigo, ochre, muted terracotta) and verify light + dark variants across all components already built in Phases 3–6
 - [ ] T102 [US5] Update `mobile-app/app.json` icon + splash to Senegalese-contextual assets (FR-031) — NOT national flag, NOT continent silhouette
-- [ ] T103 [US5] Create `mobile-app/src/components/SettingsSheet.tsx` (FR-028a): hosts the Tap-mode toggle (FR-028) bound to `settings-store.tapMode`; layout reserves space for future rows without restructure
-- [ ] T104 [US5] Update `mobile-app/app/settings.tsx` to host `SettingsSheet` as the modal content
-- [ ] T105 [US5] Add a gear icon in the top app bar of `mobile-app/app/index.tsx` that opens `/settings` via `router.push("/settings")`
-- [ ] T106 [M] [US5] MANUAL: User reviews and approves the end-to-end visual design pass: motif integration on all screens, palette in light + dark, Settings sheet UX, app icon + splash, dev-mode-toggle visual fit. No remaining US5 tasks proceed until approval is recorded.
+- [X] T103 [US5] Create `mobile-app/src/components/SettingsSheet.tsx` (FR-028a): hosts the Tap-mode toggle (FR-028) bound to `settings-store.tapMode`; layout reserves space for future rows without restructure
+- [X] T104 [US5] Update `mobile-app/app/settings.tsx` to host `SettingsSheet` as the modal content
+- [X] T105 [US5] Add a gear icon in the top app bar of `mobile-app/app/index.tsx` that opens `/settings` via `router.push("/settings")`
+- [X] T106 [M] [US5] MANUAL: User reviews and approves the end-to-end visual design pass: motif integration on all screens, palette in light + dark, Settings sheet UX, app icon + splash, dev-mode-toggle visual fit. No remaining US5 tasks proceed until approval is recorded. (approved 2026-04-18)
 
 ### Accessibility + visual implementation
 
-- [ ] T107 [P] [US5] Implement FR-028 tap-mode alternative in `mobile-app/src/components/DirectionButton.tsx` — when `settings-store.tapMode === true`, switch from press-and-hold to tap-to-start / tap-to-stop; maintain identical downstream pipeline behavior
-- [ ] T108 [P] [US5] Add `accessibilityLabel` + `accessibilityHint` (FR-025) to every interactive component (`DirectionButton`, `StatusPill`, `HistoryRow`, `RetryBanner`, `SettingsSheet`, `DevPanelSheet`) reading from `src/i18n/locales/en/messages.po`
-- [ ] T109 [P] [US5] Audit Dynamic Type in `mobile-app/src/components/**` — remove all fixed `fontSize` overrides, verify every `<Text>` scales (FR-026 / SC-009); test at the largest Dynamic Type step
-- [ ] T110 [P] [US5] Implement dark-mode palette branching in `mobile-app/src/design/tokens.ts` via `useColorScheme()`; every color consumer reads through a token (FR-024 / FR-027); no pure-black fallback
-- [ ] T111 [P] [US5] Honor reduce-motion preference (FR-032) via `AccessibilityInfo.isReduceMotionEnabled()` — disable non-essential spring/pulse animations on `DirectionButton` and `StatusPill`
-- [ ] T112 [P] [US5] Create `mobile-app/src/design/__tests__/contrast.test.ts` — computed WCAG AA contrast ratios for every foreground/background token pair in light and dark palettes (FR-027); assertion ≥ 4.5 for text, ≥ 3.0 for UI
-- [ ] T113 [P] [US5] Create `mobile-app/maestro/flows/us5-a11y-voiceover.yaml` — enable VoiceOver → navigate Main + History + Settings → assert every interactive control announces a meaningful label (SC-008)
-- [ ] T114 [Commit] `001-wolof-translate-mobile:Phase7-US5: visual design + accessibility pass`
+- [X] T107 [P] [US5] Implement FR-028 tap-mode alternative in `mobile-app/src/components/DirectionButton.tsx` — when `settings-store.tapMode === true`, switch from press-and-hold to tap-to-start / tap-to-stop; maintain identical downstream pipeline behavior
+- [X] T108 [P] [US5] Add `accessibilityLabel` + `accessibilityHint` (FR-025) to every interactive component (`DirectionButton`, `StatusPill`, `HistoryRow`, `RetryBanner`, `SettingsSheet`, `DevPanelSheet`) reading from `src/i18n/locales/en/messages.po`
+- [X] T109 [P] [US5] Audit Dynamic Type in `mobile-app/src/components/**` — remove all fixed `fontSize` overrides, verify every `<Text>` scales (FR-026 / SC-009); test at the largest Dynamic Type step
+- [X] T110 [P] [US5] Implement dark-mode palette branching in `mobile-app/src/design/tokens.ts` via `useColorScheme()`; every color consumer reads through a token (FR-024 / FR-027); no pure-black fallback
+- [X] T111 [P] [US5] Honor reduce-motion preference (FR-032) via `AccessibilityInfo.isReduceMotionEnabled()` — disable non-essential spring/pulse animations on `DirectionButton` and `StatusPill`
+- [X] T112 [P] [US5] Create `mobile-app/src/design/__tests__/contrast.test.ts` — computed WCAG AA contrast ratios for every foreground/background token pair in light and dark palettes (FR-027); assertion ≥ 4.5 for text, ≥ 3.0 for UI
+- [X] T113 [P] [US5] Create `mobile-app/maestro/flows/us5-a11y-voiceover.yaml` — enable VoiceOver → navigate Main + History + Settings → assert every interactive control announces a meaningful label (SC-008)
+- [X] T114 [Commit] `001-wolof-translate-mobile:Phase7-US5: visual design + accessibility pass`
 
 **Checkpoint**: All five user stories independently functional; visual identity coherent; accessibility gates passing.
 
