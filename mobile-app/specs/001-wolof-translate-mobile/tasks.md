@@ -316,7 +316,7 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 - [X] T095 [US3] Implement FR-015e backend URL editor: `DevPanelSheet` form writes to `settings-store.backendUrlOverride`; `bff-client.ts` reads the override on every request (FR-022)
 - [X] T096 [US3] Verify FR-014 + FR-016 persistence in `app/_layout.tsx`: dev-mode state and URL override are loaded on launch before the first navigation
 - [X] T097 [P] [US3] Create `mobile-app/maestro/flows/us3-dev-mode.yaml` — enable dev mode → change backend URL → next upload goes to new URL → toggle dev mode off → panels hidden; cold-relaunch preserves the toggle state
-- [ ] T098 [Commit] `001-wolof-translate-mobile:Phase6-US3: developer diagnostic panel`
+- [X] T098 [Commit] `001-wolof-translate-mobile:Phase6-US3: developer diagnostic panel`
 
 **Checkpoint**: US1 + US2 + US3 + US4 all independently functional.
 
