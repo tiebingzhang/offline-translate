@@ -283,7 +283,7 @@ Review against `spec.md`/`plan.md`/`data-model.md` surfaced five gaps: the audio
 ### Implementation
 
 - [X] T083 [US4] Add upload-progress indicator to `StatusPill` in `mobile-app/src/components/StatusPill.tsx` — when the current phase is `uploading` and `>= 2 s` have elapsed without reaching `polling`, render a non-fake progress indicator from the `uploadAsync` progress callback (FR-019)
-- [ ] T084 [Commit] `001-wolof-translate-mobile:Phase5-US4: reliability polish + E2E flows`
+- [X] T084 [Commit] `001-wolof-translate-mobile:Phase5-US4: reliability polish + E2E flows`
 
 **Checkpoint**: US1, US2, and US4 all functional independently. Reliability Maestro flows green.
 
