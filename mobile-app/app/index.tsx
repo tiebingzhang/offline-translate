@@ -52,6 +52,8 @@ export default function MainScreen() {
   const result = usePipelineStore((s) => s.result);
   const error = usePipelineStore((s) => s.error);
   const recordedDurationSec = usePipelineStore((s) => s.recordedDurationSec);
+  const uploadProgress = usePipelineStore((s) => s.uploadProgress);
+  const uploadProgressVisible = usePipelineStore((s) => s.uploadProgressVisible);
 
   const pressStart = usePipelineStore((s) => s.pressStart);
   const pressRelease = usePipelineStore((s) => s.pressRelease);
@@ -120,7 +122,12 @@ export default function MainScreen() {
             {i18n._('app.name')}
           </Text>
           <View style={styles.headerActions}>
-            <StatusPill stage={statusStage} />
+            <StatusPill
+              stage={statusStage}
+              uploadProgress={
+                phase === 'uploading' && uploadProgressVisible ? uploadProgress : null
+              }
+            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={i18n._('a11y.openHistory')}

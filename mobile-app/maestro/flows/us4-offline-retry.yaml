@@ -1,0 +1,52 @@
+# Phase 5 / US4 — offline retry preserves audio (SC-004 end-to-end)
+# (001-wolof-translate-mobile:T082)
+#
+# Tests: airplane mode ON → record 3 s phrase → upload fails → RetryBanner
+# visible → airplane mode OFF → tap Retry → translation completes WITHOUT
+# re-recording.
+appId: com.cryingaffrica.wolofTranslate
+name: US4 — Offline retry without re-recording
+tags:
+  - us4
+  - reliability
+  - offline
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Wolof Translate"
+
+# Force offline before recording so the upload is guaranteed to fail
+- toggleAirplaneMode
+
+# Record a short phrase — the in-flight upload will fail with upload_failed
+- longPressOn:
+    text: "English → Wolof"
+    duration: 3000
+
+# RetryBanner should surface with the network-problem variant (T076)
+- extendedWaitUntil:
+    visible:
+      text: "Network problem"
+    timeout: 8000
+- assertVisible:
+    text: "Retry"
+- assertVisible:
+    text: "Discard"
+
+# Restore network and tap Retry — the captured audio is preserved client-side
+# so retry should re-upload WITHOUT prompting the user to re-record.
+- toggleAirplaneMode
+- tapOn:
+    text: "Retry"
+
+# The pipeline should now run end-to-end on the same captured clip
+- extendedWaitUntil:
+    visible:
+      text: "You said"
+    timeout: 12000
+- assertVisible:
+    text: "Translation"
+    timeout: 12000
+- assertVisible:
+    text: "Done"
+    timeout: 15000

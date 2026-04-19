@@ -29,19 +29,24 @@ export function subscribeToInterruptions(
   player: AudioPlayer,
   listener: (event: InterruptionEvent) => void,
 ): AudioSubscription {
-  let lastPlaying = false;
-  // Heuristic: expo-audio SDK 55 surfaces OS interruptions as externally-driven
-  // pause/resume in playbackStatusUpdate; T055 refines on-device
-  // (001-wolof-translate-mobile:T055)
+  // State machine so the very first playing=true transition (initial start of
+  // playback) is not mistaken for "interruption ended". Only fire 'ended' after
+  // a real 'began' has been observed (001-wolof-translate-mobile:T079).
+  let mode: 'idle' | 'playing' | 'interrupted' = 'idle';
   const sub = player.addListener('playbackStatusUpdate', (status: StatusLike) => {
     const playing = !!status.playing;
     const finishedNaturally = !!status.didJustFinish;
-    if (lastPlaying && !playing && !finishedNaturally) {
+    if (mode === 'idle' && playing) {
+      mode = 'playing';
+    } else if (mode === 'playing' && !playing && !finishedNaturally) {
+      mode = 'interrupted';
       listener({ kind: 'began' });
-    } else if (!lastPlaying && playing) {
+    } else if (mode === 'interrupted' && playing) {
+      mode = 'playing';
       listener({ kind: 'ended' });
+    } else if (mode === 'playing' && !playing && finishedNaturally) {
+      mode = 'idle';
     }
-    lastPlaying = playing;
   });
   return { remove: () => sub.remove() };
 }

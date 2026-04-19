@@ -1,6 +1,7 @@
 import {
   FileSystemSessionType,
   FileSystemUploadType,
+  createUploadTask,
   documentDirectory,
   downloadAsync,
   makeDirectoryAsync,
@@ -117,11 +118,20 @@ export interface BffClientConfig {
   audioDir?: string;
 }
 
+export interface PostTranslateSpeakOpts {
+  timeoutAtMs?: number;
+  // Reports upload progress as a fraction in [0, 1]. When provided, the client
+  // uses createUploadTask so the underlying URLSession surfaces real bytes-sent
+  // events; if omitted, the simpler uploadAsync path is used.
+  // (001-wolof-translate-mobile:T083 / FR-019)
+  onProgress?: (frac: number) => void;
+}
+
 export interface BffClient {
   postTranslateSpeak(
     audioUri: string,
     direction: Direction,
-    opts?: { timeoutAtMs?: number },
+    opts?: PostTranslateSpeakOpts,
   ): Promise<UploadAccepted>;
   pollUntilTerminal(
     requestId: string,
@@ -201,23 +211,31 @@ export function createBffClient(config: BffClientConfig): BffClient {
   async function postTranslateSpeak(
     audioUri: string,
     direction: Direction,
-    opts?: { timeoutAtMs?: number },
+    opts?: PostTranslateSpeakOpts,
   ): Promise<UploadAccepted> {
-    const uploadPromise = uploadAsync(
-      joinUrl(baseUrl, '/api/translate-speak'),
-      audioUri,
-      {
-        httpMethod: 'POST',
-        fieldName: 'file',
-        mimeType: 'audio/m4a',
-        sessionType: FileSystemSessionType.BACKGROUND,
-        uploadType: FileSystemUploadType.MULTIPART,
-        parameters: { direction },
-      },
-    );
+    const url = joinUrl(baseUrl, '/api/translate-speak');
+    const fsOptions = {
+      httpMethod: 'POST' as const,
+      fieldName: 'file',
+      mimeType: 'audio/m4a',
+      sessionType: FileSystemSessionType.BACKGROUND,
+      uploadType: FileSystemUploadType.MULTIPART,
+      parameters: { direction },
+    };
+    const uploadPromise = opts?.onProgress
+      ? createUploadTask(url, audioUri, fsOptions, ({
+          totalBytesSent,
+          totalBytesExpectedToSend,
+        }) => {
+          if (totalBytesExpectedToSend > 0) {
+            const frac = Math.min(1, Math.max(0, totalBytesSent / totalBytesExpectedToSend));
+            opts.onProgress!(frac);
+          }
+        }).uploadAsync()
+      : uploadAsync(url, audioUri, fsOptions);
 
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    let response: { status: number; body: string };
+    let response: { status: number; body: string } | null | undefined;
     try {
       if (opts?.timeoutAtMs !== undefined) {
         const waitMs = Math.max(0, opts.timeoutAtMs - nowMs());
@@ -246,6 +264,15 @@ export function createBffClient(config: BffClientConfig): BffClient {
       });
     } finally {
       if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+    if (!response) {
+      // createUploadTask resolves undefined when cancelled — we never cancel
+      // here, but the type allows it, so guard rather than cast.
+      throw new TranslationError({
+        kind: 'upload_failed',
+        message: 'Upload was cancelled before completion.',
+        retryable: true,
+      });
     }
 
     if (response.status >= 400) {

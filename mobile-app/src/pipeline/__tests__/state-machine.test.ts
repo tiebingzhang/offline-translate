@@ -69,6 +69,7 @@ describe('pipeline state machine', () => {
           capturedUri: 'file:///cache/x.m4a',
           durationSec: 3.2,
           startedAtMs: 1_000_000,
+          uploadStartedAtMs: 1_000_500,
         },
       ]);
       expect(s.phase).toBe('uploading');
@@ -97,6 +98,7 @@ describe('pipeline state machine', () => {
           capturedUri: 'file:///c/x.m4a',
           durationSec: 3,
           startedAtMs: 1_000_000,
+          uploadStartedAtMs: 1_000_500,
         },
         { type: 'uploadAccepted', requestId: 'abc', pollAfterMs: 500 },
       ]);
@@ -112,6 +114,7 @@ describe('pipeline state machine', () => {
           capturedUri: 'file:///c/x.m4a',
           durationSec: 3,
           startedAtMs: 1_000_000,
+          uploadStartedAtMs: 1_000_500,
         },
         { type: 'uploadFailed', error: uploadErr },
       ]);
@@ -129,6 +132,7 @@ describe('pipeline state machine', () => {
         capturedUri: 'file:///c/x.m4a',
         durationSec: 3,
         startedAtMs: 1_000_000,
+        uploadStartedAtMs: 1_000_500,
       },
       { type: 'uploadAccepted', requestId: 'abc', pollAfterMs: 500 },
     ];
@@ -206,6 +210,7 @@ describe('pipeline state machine', () => {
         capturedUri: 'file:///c/x.m4a',
         durationSec: 3,
         startedAtMs: 1_000_000,
+        uploadStartedAtMs: 1_000_500,
       },
       { type: 'uploadAccepted', requestId: 'abc', pollAfterMs: 500 },
     ];
@@ -253,6 +258,7 @@ describe('pipeline state machine', () => {
             capturedUri: 'file:///c/x.m4a',
             durationSec: 3,
             startedAtMs: 1_000_000,
+            uploadStartedAtMs: 1_000_500,
           },
         ],
         [
@@ -262,6 +268,7 @@ describe('pipeline state machine', () => {
             capturedUri: 'file:///c/x.m4a',
             durationSec: 3,
             startedAtMs: 1_000_000,
+            uploadStartedAtMs: 1_000_500,
           },
           { type: 'uploadFailed', error: uploadErr },
         ],

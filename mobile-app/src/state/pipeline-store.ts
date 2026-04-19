@@ -26,6 +26,8 @@ const DEFAULT_BFF_BASE_URL =
   process.env.BFF_BASE_URL_DEV ??
   'http://localhost:8090';
 
+export const UPLOAD_PROGRESS_VISIBILITY_DELAY_MS = 2000;
+
 function resolveBaseUrl(): string {
   const override = useSettingsStore.getState().backendUrlOverride;
   return override && override.trim().length > 0 ? override : DEFAULT_BFF_BASE_URL;
@@ -65,9 +67,23 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
   ): Promise<void> {
     const client = getClient();
     const timeoutAtMs = get().timeoutAtMs ?? startedAtMs + (30 + durationSec) * 1000;
+    // FR-019: gate the indicator behind a 2 s threshold so fast uploads never
+    // flicker an indicator. The store itself owns the timer rather than the UI
+    // so the rule is enforced regardless of which view consumes it.
+    // (001-wolof-translate-mobile:T083)
+    const visibilityTimer = setTimeout(() => {
+      if (get().phase === 'uploading') {
+        dispatch({ type: 'uploadProgressVisible' });
+      }
+    }, UPLOAD_PROGRESS_VISIBILITY_DELAY_MS);
     try {
       const accepted = await client.postTranslateSpeak(capturedUri, direction, {
         timeoutAtMs,
+        onProgress: (frac) => {
+          if (get().phase === 'uploading') {
+            dispatch({ type: 'uploadProgress', frac });
+          }
+        },
       });
       dispatch({
         type: 'uploadAccepted',
@@ -85,6 +101,8 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
       await drainPoll(accepted.requestId, timeoutAtMs);
     } catch (err) {
       handlePipelineError(err);
+    } finally {
+      clearTimeout(visibilityTimer);
     }
   }
 
@@ -198,8 +216,15 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
     pressRelease: async (capturedUri, durationSec) => {
       const direction = get().direction;
       if (!direction) return;
-      const startedAtMs = get().startedAtMs ?? Date.now() - durationSec * 1000;
-      dispatch({ type: 'pressRelease', capturedUri, durationSec, startedAtMs });
+      const nowMs = Date.now();
+      const startedAtMs = get().startedAtMs ?? nowMs - durationSec * 1000;
+      dispatch({
+        type: 'pressRelease',
+        capturedUri,
+        durationSec,
+        startedAtMs,
+        uploadStartedAtMs: nowMs,
+      });
       await runPipelineFromUpload(capturedUri, direction, startedAtMs, durationSec);
     },
 
@@ -217,16 +242,19 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
       if (!capturedAudioUri || !direction) return;
       dispatch({ type: 'discard' });
       dispatch({ type: 'pressStart', direction });
+      const nowMs = Date.now();
+      const effectiveStart = startedAtMs ?? nowMs - recordedDurationSec * 1000;
       dispatch({
         type: 'pressRelease',
         capturedUri: capturedAudioUri,
         durationSec: recordedDurationSec,
-        startedAtMs: startedAtMs ?? Date.now() - recordedDurationSec * 1000,
+        startedAtMs: effectiveStart,
+        uploadStartedAtMs: nowMs,
       });
       await runPipelineFromUpload(
         capturedAudioUri,
         direction,
-        startedAtMs ?? Date.now() - recordedDurationSec * 1000,
+        effectiveStart,
         recordedDurationSec,
       );
     },
@@ -238,6 +266,7 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
         capturedUri: job.capturedAudioPath,
         durationSec: job.recordedDurationSec,
         startedAtMs: job.startedAtMs,
+        uploadStartedAtMs: Date.now(),
       });
       dispatch({ type: 'uploadAccepted', requestId: job.requestId, pollAfterMs: 500 });
       await drainPoll(job.requestId, job.timeoutAtMs);

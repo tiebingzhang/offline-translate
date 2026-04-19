@@ -29,17 +29,35 @@ jest.mock('expo-file-system', () => ({
   Directory: jest.fn(),
 }));
 
-jest.mock('expo-file-system/legacy', () => ({
-  uploadAsync: jest.fn(async () => ({ status: 202, body: '{}' })),
-  downloadAsync: jest.fn(async () => ({ status: 200, uri: 'file:///document/audio/test.m4a' })),
-  getInfoAsync: jest.fn(async () => ({ exists: false })),
-  makeDirectoryAsync: jest.fn(async () => {}),
-  deleteAsync: jest.fn(async () => {}),
-  documentDirectory: 'file:///document/',
-  cacheDirectory: 'file:///cache/',
-  FileSystemSessionType: { BACKGROUND: 0, FOREGROUND: 1 },
-  FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
-}));
+jest.mock('expo-file-system/legacy', () => {
+  const uploadAsync = jest.fn(async () => ({ status: 202, body: '{}' }));
+  // createUploadTask wraps the same uploadAsync mock so existing tests that
+  // override uploadAsync continue to drive both code paths
+  // (001-wolof-translate-mobile:T083)
+  const createUploadTask = jest.fn(
+    (
+      _url: string,
+      _fileUri: string,
+      _options: unknown,
+      _callback?: (data: { totalBytesSent: number; totalBytesExpectedToSend: number }) => void,
+    ) => ({
+      uploadAsync: () => uploadAsync(),
+      cancelAsync: jest.fn(async () => {}),
+    }),
+  );
+  return {
+    uploadAsync,
+    createUploadTask,
+    downloadAsync: jest.fn(async () => ({ status: 200, uri: 'file:///document/audio/test.m4a' })),
+    getInfoAsync: jest.fn(async () => ({ exists: false })),
+    makeDirectoryAsync: jest.fn(async () => {}),
+    deleteAsync: jest.fn(async () => {}),
+    documentDirectory: 'file:///document/',
+    cacheDirectory: 'file:///cache/',
+    FileSystemSessionType: { BACKGROUND: 0, FOREGROUND: 1 },
+    FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
+  };
+});
 
 jest.mock('expo-speech', () => ({
   speak: jest.fn(),

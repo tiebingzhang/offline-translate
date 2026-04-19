@@ -32,6 +32,13 @@ export interface PipelineState {
   pollAfterMs: number | null;
   result: TranslationResult | null;
   error: TranslationError | null;
+  // FR-019: real upload progress in [0, 1]; null until the first byte event.
+  uploadProgress: number | null;
+  // Wall-clock ms when the upload phase began. Consumers use this to gate the
+  // 2-second visibility threshold so fast uploads never flicker an indicator.
+  uploadStartedAtMs: number | null;
+  // Becomes true 2 s after upload begins (set by the store via setTimeout).
+  uploadProgressVisible: boolean;
 }
 
 export type PipelineAction =
@@ -42,7 +49,10 @@ export type PipelineAction =
       capturedUri: string;
       durationSec: number;
       startedAtMs: number;
+      uploadStartedAtMs: number;
     }
+  | { type: 'uploadProgress'; frac: number }
+  | { type: 'uploadProgressVisible' }
   | { type: 'uploadAccepted'; requestId: string; pollAfterMs: number }
   | { type: 'uploadFailed'; error: TranslationError }
   | { type: 'pollStage'; stage: BackendStage; stageDetail?: string | null }
@@ -69,6 +79,9 @@ export const initialPipelineState: PipelineState = {
   pollAfterMs: null,
   result: null,
   error: null,
+  uploadProgress: null,
+  uploadStartedAtMs: null,
+  uploadProgressVisible: false,
 };
 
 export function reducePipeline(
@@ -99,7 +112,20 @@ export function reducePipeline(
         recordedDurationSec: action.durationSec,
         startedAtMs: action.startedAtMs,
         timeoutAtMs: computeTimeoutAtMs(action.startedAtMs, action.durationSec),
+        uploadProgress: 0,
+        uploadStartedAtMs: action.uploadStartedAtMs,
+        uploadProgressVisible: false,
       };
+    }
+
+    case 'uploadProgress': {
+      if (state.phase !== 'uploading') return state;
+      return { ...state, uploadProgress: action.frac };
+    }
+
+    case 'uploadProgressVisible': {
+      if (state.phase !== 'uploading') return state;
+      return { ...state, uploadProgressVisible: true };
     }
 
     case 'uploadAccepted': {
@@ -110,12 +136,22 @@ export function reducePipeline(
         requestId: action.requestId,
         pollAfterMs: action.pollAfterMs,
         pollAttempt: 0,
+        uploadProgress: null,
+        uploadStartedAtMs: null,
+        uploadProgressVisible: false,
       };
     }
 
     case 'uploadFailed': {
       if (state.phase !== 'uploading') return state;
-      return { ...state, phase: 'failed', error: action.error };
+      return {
+        ...state,
+        phase: 'failed',
+        error: action.error,
+        uploadProgress: null,
+        uploadStartedAtMs: null,
+        uploadProgressVisible: false,
+      };
     }
 
     case 'pollStage': {
@@ -173,7 +209,13 @@ export function reducePipeline(
         state.phase !== 'uploading'
       )
         return state;
-      return { ...state, phase: 'timed_out' };
+      return {
+        ...state,
+        phase: 'timed_out',
+        uploadProgress: null,
+        uploadStartedAtMs: null,
+        uploadProgressVisible: false,
+      };
     }
 
     case 'playbackStarted': {

@@ -79,6 +79,27 @@ msgstr "This is taking too long. Your recording is saved — try again."
 msgid "error.unknown"
 msgstr "Something went wrong. Please try again."
 
+msgid "error.title.upload_failed"
+msgstr "Network problem"
+
+msgid "error.title.poll_failed"
+msgstr "Connection lost"
+
+msgid "error.title.server_failed"
+msgstr "Server problem"
+
+msgid "error.title.client_timeout"
+msgstr "Taking too long"
+
+msgid "error.title.malformed_response"
+msgstr "Unexpected response"
+
+msgid "error.title.timed_out"
+msgstr "Taking too long"
+
+msgid "error.title.unknown"
+msgstr "Something went wrong"
+
 msgid "action.retry"
 msgstr "Retry"
 
