@@ -5,6 +5,7 @@ import type {
   JobState,
   UploadAccepted,
 } from '@/api/bff-client';
+import { isTranslationError } from '@/api/bff-client';
 import type { HistoryEntryInsert } from '@/cache/history-repo';
 
 // Mock the BFF client module so pipeline-store consumes a stub client
@@ -204,6 +205,28 @@ describe('pipeline-store completion path', () => {
       capturedUri,
       expect.objectContaining({ idempotent: true }),
     );
+  });
+
+  test('non-TranslationError from pendingJobsRepo.insert surfaces as failed phase with poll_failed wrapped error', async () => {
+    mockDownloadAudio.mockResolvedValue('file:///document/audio/req-1.m4a');
+    mockPollUntilTerminal.mockReturnValue(
+      singleCompletion(
+        makeCompletedState({ audioUrl: '/api/req-1/audio', outputMode: 'wolof_audio' }),
+      ),
+    );
+    const boom = new Error('boom');
+    mockPendingInsert.mockRejectedValueOnce(boom);
+
+    const capturedUri = 'file:///cache/in-flight/stuck.m4a';
+    usePipelineStore.getState().pressStart('english_to_wolof');
+    await usePipelineStore.getState().pressRelease(capturedUri, 3);
+
+    const state = usePipelineStore.getState();
+    expect(state.phase).toBe('failed');
+    expect(isTranslationError(state.error)).toBe(true);
+    expect(state.error?.kind).toBe('poll_failed');
+    expect(state.error?.retryable).toBe(false);
+    expect(state.error?.cause).toBe(boom);
   });
 
   test('skips transient unlink when capturedUri equals localAudioUri (no double-free)', async () => {

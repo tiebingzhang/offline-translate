@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import {
   createBffClient,
   isTranslationError,
+  TranslationError,
   type BffClient,
   type Direction,
   type JobState,
@@ -228,17 +229,24 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
   }
 
   function handlePipelineError(err: unknown): void {
+    const phase = get().phase;
+    const wrapped = isTranslationError(err)
+      ? err
+      : new TranslationError({
+          kind: phase === 'uploading' ? 'upload_failed' : 'poll_failed',
+          message: 'An unexpected error occurred.',
+          retryable: false,
+          cause: err,
+        });
     if (!isTranslationError(err)) {
       log('error', 'pipeline', 'unexpected error', { err: String(err) });
-      return;
     }
-    const phase = get().phase;
-    if (err.kind === 'client_timeout') {
+    if (wrapped.kind === 'client_timeout') {
       dispatch({ type: 'timeout', nowMs: Date.now() });
     } else if (phase === 'uploading') {
-      dispatch({ type: 'uploadFailed', error: err });
-    } else {
-      dispatch({ type: 'jobFailed', error: err });
+      dispatch({ type: 'uploadFailed', error: wrapped });
+    } else if (phase === 'polling' || phase === 'retrying') {
+      dispatch({ type: 'jobFailed', error: wrapped });
     }
   }
 
