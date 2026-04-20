@@ -68,19 +68,22 @@
             <p class="eyebrow">Latest Translation</p>
             <h2>Translated audio</h2>
           </div>
-          <a
-            id="translatedDownloadLink"
-            class="ghost-link disabled"
-            href="#"
-            download="translation.m4a"
-            aria-disabled="true"
-          >
-            Download audio
-          </a>
+          <div class="upload-actions">
+            <button id="translatedPlayButton" class="ghost-button" type="button" disabled>Play</button>
+            <a
+              id="translatedDownloadLink"
+              class="ghost-link disabled"
+              href="#"
+              download="translation.m4a"
+              aria-disabled="true"
+            >
+              Download audio
+            </a>
+          </div>
         </div>
 
         <p id="playbackText" class="playback-text">No translated audio fetched yet.</p>
-        <audio id="translatedAudio" class="audio-preview" controls preload="none"></audio>
+        <div id="translatedAudioHost"></div>
       </section>
 
       <section class="panel panel-output" data-developer-panel hidden>

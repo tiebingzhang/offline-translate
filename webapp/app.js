@@ -14,6 +14,7 @@ const state = {
   latestBlobName: null,
   latestObjectUrl: null,
   translatedAudioObjectUrl: null,
+  translatedAudioElement: null,
   isUploading: false,
   currentRequestId: null,
   lastSeenStage: null,
@@ -36,7 +37,8 @@ const els = {
   bytesValue: document.querySelector("#bytesValue"),
   channelsValue: document.querySelector("#channelsValue"),
   readyValue: document.querySelector("#readyValue"),
-  translatedAudio: document.querySelector("#translatedAudio"),
+  translatedAudioHost: document.querySelector("#translatedAudioHost"),
+  translatedPlayButton: document.querySelector("#translatedPlayButton"),
   translatedDownloadLink: document.querySelector("#translatedDownloadLink"),
   playbackText: document.querySelector("#playbackText"),
   audioPreview: document.querySelector("#audioPreview"),
@@ -123,6 +125,68 @@ function appendLog(message) {
   els.eventLog.prepend(item);
 }
 
+function appendTranslatedAudioDebug(message, details = null) {
+  appendLog(`Translated audio debug: ${message}`);
+  if (details) {
+    console.log("[translated-audio]", message, details);
+  } else {
+    console.log("[translated-audio]", message);
+  }
+}
+
+function describeMediaError(mediaError) {
+  if (!mediaError) {
+    return "none";
+  }
+
+  const codeNames = {
+    1: "MEDIA_ERR_ABORTED",
+    2: "MEDIA_ERR_NETWORK",
+    3: "MEDIA_ERR_DECODE",
+    4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+  };
+  return `${codeNames[mediaError.code] || "UNKNOWN"} (${mediaError.code}): ${mediaError.message || "no message"}`;
+}
+
+function snapshotAudioState(audio) {
+  return {
+    currentSrc: audio.currentSrc,
+    readyState: audio.readyState,
+    networkState: audio.networkState,
+    paused: audio.paused,
+    ended: audio.ended,
+    muted: audio.muted,
+    volume: audio.volume,
+    currentTime: audio.currentTime,
+    duration: Number.isFinite(audio.duration) ? audio.duration : String(audio.duration),
+    error: describeMediaError(audio.error),
+  };
+}
+
+function attachTranslatedAudioDebugListeners(audio, label) {
+  const events = [
+    "loadstart",
+    "loadedmetadata",
+    "loadeddata",
+    "canplay",
+    "canplaythrough",
+    "play",
+    "playing",
+    "pause",
+    "ended",
+    "waiting",
+    "stalled",
+    "suspend",
+    "error",
+  ];
+
+  for (const eventName of events) {
+    audio.addEventListener(eventName, () => {
+      appendTranslatedAudioDebug(`${label} event=${eventName}`, snapshotAudioState(audio));
+    });
+  }
+}
+
 function clearLatestBlob() {
   if (state.latestObjectUrl) {
     URL.revokeObjectURL(state.latestObjectUrl);
@@ -149,15 +213,20 @@ function setPlaybackText(text) {
 }
 
 function clearTranslatedAudio() {
-  els.translatedAudio.pause();
-  els.translatedAudio.removeAttribute("src");
-  els.translatedAudio.load();
+  if (state.translatedAudioElement) {
+    state.translatedAudioElement.pause();
+    state.translatedAudioElement.removeAttribute("src");
+    state.translatedAudioElement.load();
+  }
 
   if (state.translatedAudioObjectUrl) {
     URL.revokeObjectURL(state.translatedAudioObjectUrl);
   }
 
   state.translatedAudioObjectUrl = null;
+  state.translatedAudioElement = null;
+  els.translatedAudioHost.replaceChildren();
+  els.translatedPlayButton.disabled = true;
   els.translatedDownloadLink.href = "#";
   els.translatedDownloadLink.download = "translation.m4a";
   els.translatedDownloadLink.classList.add("disabled");
@@ -184,11 +253,67 @@ function publishWavPreview(blob, metadata, options = {}) {
 function publishTranslatedAudio(blob, options = {}) {
   clearTranslatedAudio();
   state.translatedAudioObjectUrl = URL.createObjectURL(blob);
-  els.translatedAudio.src = state.translatedAudioObjectUrl;
+  const audio = document.createElement("audio");
+  audio.src = state.translatedAudioObjectUrl;
+  audio.controls = true;
+  audio.preload = "none";
+  audio.className = "audio-preview";
+  attachTranslatedAudioDebugListeners(audio, "embedded");
+  els.translatedAudioHost.appendChild(audio);
+  state.translatedAudioElement = audio;
+  window.__translatedAudioDebug = {
+    blobUrl: state.translatedAudioObjectUrl,
+    embeddedElement: audio,
+    lastBlobType: blob.type,
+    lastBlobSize: blob.size,
+  };
+  appendTranslatedAudioDebug("published translated audio blob", {
+    blobType: blob.type,
+    blobSize: blob.size,
+    blobUrl: state.translatedAudioObjectUrl,
+    fileName: options.fileName || "translation.m4a",
+    embedded: snapshotAudioState(audio),
+  });
+  els.translatedPlayButton.disabled = false;
   els.translatedDownloadLink.href = state.translatedAudioObjectUrl;
   els.translatedDownloadLink.download = options.fileName || "translation.m4a";
   els.translatedDownloadLink.classList.remove("disabled");
   els.translatedDownloadLink.setAttribute("aria-disabled", "false");
+}
+
+async function playTranslatedAudioFromBlobUrl() {
+  if (!state.translatedAudioObjectUrl) {
+    setPlaybackText("No translated audio is available yet.");
+    appendLog("Translated audio play was requested before audio was fetched.");
+    return;
+  }
+
+  try {
+    appendTranslatedAudioDebug("play button path starting", {
+      blobUrl: state.translatedAudioObjectUrl,
+      embedded: state.translatedAudioElement ? snapshotAudioState(state.translatedAudioElement) : null,
+    });
+    const audio = new Audio(state.translatedAudioObjectUrl);
+    attachTranslatedAudioDebugListeners(audio, "button");
+    window.__translatedAudioDebug = {
+      ...(window.__translatedAudioDebug || {}),
+      blobUrl: state.translatedAudioObjectUrl,
+      buttonAudio: audio,
+    };
+    appendTranslatedAudioDebug("button audio element created", snapshotAudioState(audio));
+    await audio.play();
+    setPlaybackText("Playing translated audio.");
+    appendLog("Translated audio playback started from blob URL.");
+    appendTranslatedAudioDebug("button audio play() resolved", snapshotAudioState(audio));
+  } catch (error) {
+    setPlaybackText("Translated audio could not be played.");
+    appendLog(`Translated audio playback failed: ${error.message}`);
+    appendTranslatedAudioDebug("button audio play() rejected", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+  }
 }
 
 function resolveStatusUrl(statusUrl) {
@@ -256,8 +381,20 @@ async function fetchTranslatedAudio(job) {
   setUiState("processing", "Fetching translated audio.");
   setPlaybackText("Fetching translated audio.");
   appendLog(`Fetching translated audio from ${resolvedAudioUrl}.`);
+  appendTranslatedAudioDebug("fetching translated audio", {
+    requestId: job.request_id,
+    audioUrl,
+    resolvedAudioUrl,
+  });
 
   const response = await fetch(resolvedAudioUrl, { method: "GET" });
+  appendTranslatedAudioDebug("translated audio fetch response received", {
+    status: response.status,
+    ok: response.ok,
+    contentType: response.headers.get("content-type"),
+    contentLength: response.headers.get("content-length"),
+    url: response.url,
+  });
   if (!response.ok) {
     let message = `Audio fetch failed with status ${response.status}`;
     try {
@@ -270,19 +407,29 @@ async function fetchTranslatedAudio(job) {
   }
 
   const audioBlob = await response.blob();
+  appendTranslatedAudioDebug("translated audio blob created", {
+    blobType: audioBlob.type,
+    blobSize: audioBlob.size,
+  });
   publishTranslatedAudio(audioBlob, { fileName: `${job.request_id}.m4a` });
   appendLog(`Fetched translated audio for request ${job.request_id} (${audioBlob.size} bytes).`);
 
   try {
-    els.translatedAudio.currentTime = 0;
-    await els.translatedAudio.play();
-    setPlaybackText("Playing translated audio.");
+    appendTranslatedAudioDebug("auto-triggering translated play button", {
+      disabled: els.translatedPlayButton.disabled,
+      blobUrl: state.translatedAudioObjectUrl,
+    });
+    els.translatedPlayButton.click();
     setUiState("ready", "Translated audio ready.");
-    appendLog(`Browser playback started for request ${job.request_id}.`);
   } catch (error) {
     setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
     setUiState("ready", "Translated audio ready.");
     appendLog(`Browser playback did not start automatically: ${error.message}`);
+    appendTranslatedAudioDebug("auto-triggering play button threw", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
   }
 }
 
@@ -737,6 +884,13 @@ function bindUi() {
   });
   els.pickWavButton.addEventListener("click", () => {
     els.diskWavInput.click();
+  });
+  els.translatedPlayButton.addEventListener("click", () => {
+    appendTranslatedAudioDebug("translated play button clicked", {
+      disabled: els.translatedPlayButton.disabled,
+      blobUrl: state.translatedAudioObjectUrl,
+    });
+    void playTranslatedAudioFromBlobUrl();
   });
   els.diskWavInput.addEventListener("change", (event) => {
     void handleDiskWavSelection(event);
