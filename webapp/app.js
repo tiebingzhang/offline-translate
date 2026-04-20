@@ -13,6 +13,7 @@ const state = {
   latestBlob: null,
   latestBlobName: null,
   latestObjectUrl: null,
+  translatedAudioObjectUrl: null,
   isUploading: false,
   currentRequestId: null,
   lastSeenStage: null,
@@ -35,6 +36,9 @@ const els = {
   bytesValue: document.querySelector("#bytesValue"),
   channelsValue: document.querySelector("#channelsValue"),
   readyValue: document.querySelector("#readyValue"),
+  translatedAudio: document.querySelector("#translatedAudio"),
+  translatedDownloadLink: document.querySelector("#translatedDownloadLink"),
+  playbackText: document.querySelector("#playbackText"),
   audioPreview: document.querySelector("#audioPreview"),
   downloadLink: document.querySelector("#downloadLink"),
   serverUrl: document.querySelector("#serverUrl"),
@@ -140,6 +144,27 @@ function clearLatestBlob() {
   els.serverResponse.textContent = "No upload attempted yet.";
 }
 
+function setPlaybackText(text) {
+  els.playbackText.textContent = text;
+}
+
+function clearTranslatedAudio() {
+  els.translatedAudio.pause();
+  els.translatedAudio.removeAttribute("src");
+  els.translatedAudio.load();
+
+  if (state.translatedAudioObjectUrl) {
+    URL.revokeObjectURL(state.translatedAudioObjectUrl);
+  }
+
+  state.translatedAudioObjectUrl = null;
+  els.translatedDownloadLink.href = "#";
+  els.translatedDownloadLink.download = "translation.m4a";
+  els.translatedDownloadLink.classList.add("disabled");
+  els.translatedDownloadLink.setAttribute("aria-disabled", "true");
+  setPlaybackText("No translated audio fetched yet.");
+}
+
 function publishWavPreview(blob, metadata, options = {}) {
   clearLatestBlob();
   state.latestBlob = blob;
@@ -154,6 +179,16 @@ function publishWavPreview(blob, metadata, options = {}) {
   els.bytesValue.textContent = String(blob.size);
   els.channelsValue.textContent = String(metadata.channels);
   els.readyValue.textContent = "Yes";
+}
+
+function publishTranslatedAudio(blob, options = {}) {
+  clearTranslatedAudio();
+  state.translatedAudioObjectUrl = URL.createObjectURL(blob);
+  els.translatedAudio.src = state.translatedAudioObjectUrl;
+  els.translatedDownloadLink.href = state.translatedAudioObjectUrl;
+  els.translatedDownloadLink.download = options.fileName || "translation.m4a";
+  els.translatedDownloadLink.classList.remove("disabled");
+  els.translatedDownloadLink.setAttribute("aria-disabled", "false");
 }
 
 function resolveStatusUrl(statusUrl) {
@@ -206,6 +241,48 @@ function updateUiFromJob(job) {
     default:
       setUiState(job.stage || "processing", job.stage_detail || "Processing request.");
       break;
+  }
+}
+
+async function fetchTranslatedAudio(job) {
+  const audioUrl = job.result?.audio_url;
+  if (!audioUrl) {
+    clearTranslatedAudio();
+    setPlaybackText("This translation did not return downloadable audio.");
+    return;
+  }
+
+  const resolvedAudioUrl = new URL(audioUrl, window.location.origin).toString();
+  setUiState("processing", "Fetching translated audio.");
+  setPlaybackText("Fetching translated audio.");
+  appendLog(`Fetching translated audio from ${resolvedAudioUrl}.`);
+
+  const response = await fetch(resolvedAudioUrl, { method: "GET" });
+  if (!response.ok) {
+    let message = `Audio fetch failed with status ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload.error?.message || message;
+    } catch (error) {
+      // Ignore non-JSON error bodies and preserve the default message.
+    }
+    throw new Error(message);
+  }
+
+  const audioBlob = await response.blob();
+  publishTranslatedAudio(audioBlob, { fileName: `${job.request_id}.m4a` });
+  appendLog(`Fetched translated audio for request ${job.request_id} (${audioBlob.size} bytes).`);
+
+  try {
+    els.translatedAudio.currentTime = 0;
+    await els.translatedAudio.play();
+    setPlaybackText("Playing translated audio.");
+    setUiState("ready", "Translated audio ready.");
+    appendLog(`Browser playback started for request ${job.request_id}.`);
+  } catch (error) {
+    setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
+    setUiState("ready", "Translated audio ready.");
+    appendLog(`Browser playback did not start automatically: ${error.message}`);
   }
 }
 
@@ -410,6 +487,7 @@ async function startRecording(direction, button) {
   setSelectedDirection(direction);
   state.activeButton = button;
   clearLatestBlob();
+  clearTranslatedAudio();
   const stream = await ensureMicrophoneStream();
 
   if (!state.audioContext) {
@@ -525,6 +603,7 @@ async function uploadPreviewWav() {
   form.append("direction", state.selectedDirection);
 
   state.isUploading = true;
+  clearTranslatedAudio();
   els.diskWavInput.disabled = true;
   els.pickWavButton.disabled = true;
   els.uploadButton.disabled = true;
@@ -595,6 +674,7 @@ async function pollRequestStatus(statusUrl, pollAfterMs) {
     updateUiFromJob(payload);
 
     if (payload.status === "completed") {
+      await fetchTranslatedAudio(payload);
       return payload;
     }
 

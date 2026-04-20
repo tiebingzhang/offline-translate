@@ -62,6 +62,27 @@
 
       </section>
 
+      <section class="panel panel-translation-output">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Latest Translation</p>
+            <h2>Translated audio</h2>
+          </div>
+          <a
+            id="translatedDownloadLink"
+            class="ghost-link disabled"
+            href="#"
+            download="translation.m4a"
+            aria-disabled="true"
+          >
+            Download audio
+          </a>
+        </div>
+
+        <p id="playbackText" class="playback-text">No translated audio fetched yet.</p>
+        <audio id="translatedAudio" class="audio-preview" controls preload="none"></audio>
+      </section>
+
       <section class="panel panel-output" data-developer-panel hidden>
         <div class="panel-header">
           <div>

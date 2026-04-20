@@ -999,13 +999,13 @@ def serve(
     }
     server.speech_config = speech_config or SpeechConfig(
         url="http://127.0.0.1:8001/speak",
-        play=True,
+        play=False,
         wait=False,
         output_path=None,
         request_timeout_seconds=120,
     )
     server.say_config = say_config or SayConfig(
-        play=True,
+        play=False,
         voice=None,
         rate=None,
     )
@@ -1061,9 +1061,9 @@ def main():
         help="Wolof speech server endpoint.",
     )
     parser.add_argument(
-        "--speech-no-play",
+        "--speech-play",
         action="store_true",
-        help="Generate Wolof audio without triggering playback.",
+        help="Enable Wolof audio playback on the server.",
     )
     parser.add_argument(
         "--speech-wait",
@@ -1082,9 +1082,9 @@ def main():
         help="Timeout when waiting for the Wolof speech server.",
     )
     parser.add_argument(
-        "--english-no-play",
+        "--english-play",
         action="store_true",
-        help="Disable macOS say playback for Wolof-to-English requests.",
+        help="Enable macOS say playback for Wolof-to-English requests.",
     )
     parser.add_argument(
         "--english-say-voice",
@@ -1135,13 +1135,13 @@ def main():
         },
         speech_config=SpeechConfig(
             url=args.speech_server_url,
-            play=not args.speech_no_play,
+            play=args.speech_play,
             wait=args.speech_wait,
             output_path=args.speech_output_path,
             request_timeout_seconds=args.speech_timeout_seconds,
         ),
         say_config=SayConfig(
-            play=not args.english_no_play,
+            play=args.english_play,
             voice=args.english_say_voice,
             rate=args.english_say_rate,
         ),
