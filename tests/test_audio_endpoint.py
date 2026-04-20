@@ -13,8 +13,10 @@ import pytest
 
 import web_server
 from web_server import (
+    SayConfig,
     _encode_pcm16_wav,
     encode_pcm_to_aac_m4a,
+    speak_english_with_say,
     transcode_to_wav,
 )
 
@@ -52,6 +54,17 @@ def test_audio_endpoint_404_unknown_request(client):
     assert status == 404
     payload = json.loads(body)
     assert payload["error"]["type"] == "NotFound"
+
+
+def test_audio_endpoint_wolof_to_english_happy_path(client, enqueue_wolof_to_english_job):
+    request_id = enqueue_wolof_to_english_job(b"na nga def", with_m4a=True)
+
+    status, body, headers = client.get(f"/api/requests/{request_id}/audio")
+    assert status == 200, body
+    assert headers.get("Content-Type", "").lower() == "audio/m4a"
+    assert int(headers["Content-Length"]) == len(body)
+    assert f'filename="{request_id}.m4a"' in headers.get("Content-Disposition", "")
+    assert body[4:8] == b"ftyp"
 
 
 def test_audio_endpoint_409_wrong_output_mode(client, enqueue_wolof_to_english_job):
@@ -328,3 +341,127 @@ def test_generating_speech_happy_path_populates_audio_url(monkeypatch, tmp_path)
     m4a_path = Path(job["result"]["speech_result"]["output_path_m4a"])
     assert m4a_path.is_file()
     assert m4a_path.stat().st_size > 0
+
+
+def test_wolof_to_english_completion_populates_audio_url(monkeypatch, tmp_path):
+    from web_server import JobStore, process_request_job
+
+    job_store = JobStore()
+    request_id = "w2e-happy-01"
+    rendered_path = tmp_path / f"{request_id}.m4a"
+    rendered_path.write_bytes(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00")
+
+    job_store.create(
+        {
+            "request_id": request_id,
+            "status": "queued",
+            "stage": "queued",
+            "stage_detail": "",
+            "direction": "wolof_to_english",
+            "target_language": "english",
+            "filename": "upload.m4a",
+            "content_type": "audio/m4a",
+            "bytes_received": 128,
+            "detected_format": "m4a",
+            "created_at_ms": 0,
+            "updated_at_ms": 0,
+            "timings_ms": {},
+            "result": None,
+            "error": None,
+        }
+    )
+
+    monkeypatch.setattr(
+        web_server,
+        "normalize_audio_for_whisper",
+        lambda audio_bytes, filename: audio_bytes,
+    )
+    monkeypatch.setattr(
+        web_server,
+        "call_whisper_server",
+        lambda wav, whisper_config: {
+            "text": "na nga def",
+            "raw_response": {"text": "na nga def"},
+        },
+    )
+    monkeypatch.setattr(
+        web_server,
+        "call_wolof_to_english_translation_service",
+        lambda text, translation_config: {"translated_text": "how are you"},
+    )
+    monkeypatch.setattr(
+        web_server,
+        "speak_english_with_say",
+        lambda text, say_config, output_path: {
+            "engine": "say",
+            "play": False,
+            "playback_started": False,
+            "output_path_m4a": str(rendered_path),
+        },
+    )
+
+    upload = {
+        "direction": "wolof_to_english",
+        "filename": "upload.m4a",
+        "content_type": "audio/m4a",
+        "bytes": b"ignored-by-mocked-normalize",
+    }
+
+    process_request_job(
+        request_id,
+        upload,
+        whisper_configs={"english_to_wolof": None, "wolof_to_english": None},
+        speech_config=None,
+        say_config=SayConfig(play=False, voice=None, rate=None),
+        translation_service_config=None,
+        job_store=job_store,
+    )
+
+    job = job_store.get(request_id)
+    assert job["status"] == "completed", job.get("error")
+    assert job["result"]["output_mode"] == "english_audio"
+    assert job["result"]["audio_url"] == f"/api/requests/{request_id}/audio"
+    assert job["result"]["speech_result"]["output_path_m4a"] == str(rendered_path)
+
+
+def test_speak_english_with_say_renders_m4a_and_plays_via_afplay(monkeypatch, tmp_path):
+    commands = []
+
+    def _which(name):
+        return {
+            "say": "/usr/bin/say",
+            "afplay": "/usr/bin/afplay",
+        }.get(name)
+
+    def _run(command, check, stdout, stderr):
+        commands.append(command)
+        if command[0] == "/usr/bin/say" and "-o" in command:
+            output_path = Path(command[command.index("-o") + 1])
+            output_path.write_bytes(b"\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00")
+        return None
+
+    monkeypatch.setattr(web_server.shutil, "which", _which)
+    monkeypatch.setattr(web_server.subprocess, "run", _run)
+
+    output_path = tmp_path / "english.m4a"
+    result = speak_english_with_say(
+        "Hello there",
+        SayConfig(play=True, voice="Samantha", rate=190),
+        output_path,
+    )
+
+    assert result["output_path_m4a"] == str(output_path)
+    assert result["playback_started"] is True
+    assert commands[0][:7] == [
+        "/usr/bin/say",
+        "-v",
+        "Samantha",
+        "-r",
+        "190",
+        "-o",
+        str(output_path),
+    ]
+    assert "--file-format=m4af" in commands[0]
+    assert "--data-format=aac" in commands[0]
+    assert "--bit-rate=48000" in commands[0]
+    assert commands[1] == ["/usr/bin/afplay", str(output_path)]
