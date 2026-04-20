@@ -309,6 +309,12 @@ body::before {
   margin-top: 20px;
 }
 
+.playback-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
 .upload-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

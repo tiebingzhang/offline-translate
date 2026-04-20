@@ -13,12 +13,15 @@ const state = {
   latestBlob: null,
   latestBlobName: null,
   latestObjectUrl: null,
+  translatedAudioObjectUrl: null,
+  translatedAudioElement: null,
   isUploading: false,
   currentRequestId: null,
   lastSeenStage: null,
   selectedDirection: "english_to_wolof",
   activeButton: null,
   developerMode: false,
+  audioContextUnlocked: false, // NEW: tracks whether we've played a silent buffer
 };
 
 const els = {
@@ -35,6 +38,10 @@ const els = {
   bytesValue: document.querySelector("#bytesValue"),
   channelsValue: document.querySelector("#channelsValue"),
   readyValue: document.querySelector("#readyValue"),
+  translatedAudioHost: document.querySelector("#translatedAudioHost"),
+  translatedPlayButton: document.querySelector("#translatedPlayButton"),
+  translatedDownloadLink: document.querySelector("#translatedDownloadLink"),
+  playbackText: document.querySelector("#playbackText"),
   audioPreview: document.querySelector("#audioPreview"),
   downloadLink: document.querySelector("#downloadLink"),
   serverUrl: document.querySelector("#serverUrl"),
@@ -119,6 +126,56 @@ function appendLog(message) {
   els.eventLog.prepend(item);
 }
 
+
+function describeMediaError(mediaError) {
+  if (!mediaError) {
+    return "none";
+  }
+
+  const codeNames = {
+    1: "MEDIA_ERR_ABORTED",
+    2: "MEDIA_ERR_NETWORK",
+    3: "MEDIA_ERR_DECODE",
+    4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+  };
+  return `${codeNames[mediaError.code] || "UNKNOWN"} (${mediaError.code}): ${mediaError.message || "no message"}`;
+}
+
+function snapshotAudioState(audio) {
+  return {
+    currentSrc: audio.currentSrc,
+    readyState: audio.readyState,
+    networkState: audio.networkState,
+    paused: audio.paused,
+    ended: audio.ended,
+    muted: audio.muted,
+    volume: audio.volume,
+    currentTime: audio.currentTime,
+    duration: Number.isFinite(audio.duration) ? audio.duration : String(audio.duration),
+    error: describeMediaError(audio.error),
+  };
+}
+
+function attachTranslatedAudioDebugListeners(audio, label) {
+  const events = [
+    "loadstart",
+    "loadedmetadata",
+    "loadeddata",
+    "canplay",
+    "canplaythrough",
+    "play",
+    "playing",
+    "pause",
+    "ended",
+    "waiting",
+    "stalled",
+    "suspend",
+    "error",
+  ];
+
+
+}
+
 function clearLatestBlob() {
   if (state.latestObjectUrl) {
     URL.revokeObjectURL(state.latestObjectUrl);
@@ -140,6 +197,43 @@ function clearLatestBlob() {
   els.serverResponse.textContent = "No upload attempted yet.";
 }
 
+function setPlaybackText(text) {
+  els.playbackText.textContent = text;
+}
+
+function describeTranslatedAudio(job) {
+  const isEnglishAudio =
+    job?.direction === "wolof_to_english" ||
+    job?.result?.output_mode === "english_audio";
+
+  return {
+    noun: isEnglishAudio ? "translated English audio" : "translated Wolof audio",
+    filename: `${job?.request_id || "translation"}-${isEnglishAudio ? "english" : "wolof"}.m4a`,
+  };
+}
+
+function clearTranslatedAudio() {
+  if (state.translatedAudioElement) {
+    state.translatedAudioElement.pause();
+    state.translatedAudioElement.removeAttribute("src");
+    state.translatedAudioElement.load();
+  }
+
+  if (state.translatedAudioObjectUrl) {
+    URL.revokeObjectURL(state.translatedAudioObjectUrl);
+  }
+
+  state.translatedAudioObjectUrl = null;
+  state.translatedAudioElement = null;
+  els.translatedAudioHost.replaceChildren();
+  els.translatedPlayButton.disabled = true;
+  els.translatedDownloadLink.href = "#";
+  els.translatedDownloadLink.download = "translation.m4a";
+  els.translatedDownloadLink.classList.add("disabled");
+  els.translatedDownloadLink.setAttribute("aria-disabled", "true");
+  setPlaybackText("No translated audio fetched yet.");
+}
+
 function publishWavPreview(blob, metadata, options = {}) {
   clearLatestBlob();
   state.latestBlob = blob;
@@ -154,6 +248,108 @@ function publishWavPreview(blob, metadata, options = {}) {
   els.bytesValue.textContent = String(blob.size);
   els.channelsValue.textContent = String(metadata.channels);
   els.readyValue.textContent = "Yes";
+}
+
+function publishTranslatedAudio(blob, options = {}) {
+  clearTranslatedAudio();
+  state.translatedAudioObjectUrl = URL.createObjectURL(blob);
+  const audio = document.createElement("audio");
+  audio.src = state.translatedAudioObjectUrl;
+  audio.controls = true;
+  audio.preload = "none";
+  audio.className = "audio-preview";
+  attachTranslatedAudioDebugListeners(audio, "embedded");
+  els.translatedAudioHost.appendChild(audio);
+  state.translatedAudioElement = audio;
+  window.__translatedAudioDebug = {
+    blobUrl: state.translatedAudioObjectUrl,
+    embeddedElement: audio,
+    lastBlobType: blob.type,
+    lastBlobSize: blob.size,
+  };
+  els.translatedPlayButton.disabled = false;
+  els.translatedDownloadLink.href = state.translatedAudioObjectUrl;
+  els.translatedDownloadLink.download = options.fileName || "translation.m4a";
+  els.translatedDownloadLink.classList.remove("disabled");
+  els.translatedDownloadLink.setAttribute("aria-disabled", "false");
+}
+
+async function playTranslatedAudioFromBlobUrl() {
+  if (!state.translatedAudioObjectUrl) {
+    setPlaybackText("No translated audio is available yet.");
+    appendLog("Translated audio play was requested before audio was fetched.");
+    return;
+  }
+
+  try {
+    const audio = new Audio(state.translatedAudioObjectUrl);
+    attachTranslatedAudioDebugListeners(audio, "button");
+    window.__translatedAudioDebug = {
+      ...(window.__translatedAudioDebug || {}),
+      blobUrl: state.translatedAudioObjectUrl,
+      buttonAudio: audio,
+    };
+    await audio.play();
+    setPlaybackText("Playing translated audio.");
+    appendLog("Translated audio playback started from blob URL.");
+  } catch (error) {
+    setPlaybackText("Translated audio could not be played.");
+    appendLog(`Translated audio playback failed: ${error.message}`);
+  }
+}
+
+async function playTranslatedAudioViaWebAudio() {
+  if (!state.translatedAudioObjectUrl) {
+    return;
+  }
+
+  try {
+    const response = await fetch(state.translatedAudioObjectUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
+    const source = state.audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(state.audioContext.destination);
+    source.start(0);
+    setPlaybackText("Playing translated audio.");
+    appendLog("Translated audio autoplay started via WebAudio.");
+  } catch (error) {
+    setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
+    appendLog(`Translated audio WebAudio autoplay failed: ${error.message}`);
+  }
+}
+
+
+// NEW: plays a silent one-frame buffer through the AudioContext during a real
+// user gesture (pointerdown on a talk button). This marks the AudioContext as
+// "unlocked" by the browser, so that subsequent programmatic audio.play()
+// calls — e.g. autoplay after a translation completes — are allowed.
+async function unlockAudioContext() {
+  if (state.audioContextUnlocked) {
+    return;
+  }
+
+  // Create the AudioContext now if it doesn't exist yet so that the unlock
+  // gesture and the context creation happen in the same user-gesture callback.
+  if (!state.audioContext) {
+    state.audioContext = new AudioContext();
+    state.sampleRate = state.audioContext.sampleRate;
+    els.sampleRateValue.textContent = `${state.sampleRate} Hz`;
+  }
+
+  if (state.audioContext.state === "suspended") {
+    await state.audioContext.resume();
+  }
+
+  // Play a one-frame silent buffer. This is the gesture that browsers require.
+  const buffer = state.audioContext.createBuffer(1, 1, state.audioContext.sampleRate);
+  const source = state.audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(state.audioContext.destination);
+  source.start(0);
+
+  state.audioContextUnlocked = true;
+  appendLog("AudioContext unlocked via silent buffer.");
 }
 
 function resolveStatusUrl(statusUrl) {
@@ -207,6 +403,52 @@ function updateUiFromJob(job) {
       setUiState(job.stage || "processing", job.stage_detail || "Processing request.");
       break;
   }
+}
+
+async function fetchTranslatedAudio(job) {
+  const translatedAudio = describeTranslatedAudio(job);
+  const audioUrl = job.result?.audio_url;
+  if (!audioUrl) {
+    clearTranslatedAudio();
+    setPlaybackText(`This response did not return ${translatedAudio.noun}.`);
+    appendLog(`No downloadable ${translatedAudio.noun} was returned for request ${job.request_id}.`);
+    return;
+  }
+
+  const resolvedAudioUrl = new URL(audioUrl, window.location.origin).toString();
+  setUiState("processing", `Fetching ${translatedAudio.noun}.`);
+  setPlaybackText(`Fetching ${translatedAudio.noun}.`);
+  appendLog(`Fetching ${translatedAudio.noun} from ${resolvedAudioUrl}.`);
+
+  const response = await fetch(resolvedAudioUrl, { method: "GET" });
+  if (!response.ok) {
+    let message = `Audio fetch failed with status ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload.error?.message || message;
+    } catch (error) {
+      // Ignore non-JSON error bodies and preserve the default message.
+    }
+    throw new Error(message);
+  }
+
+  const audioBlob = await response.blob();
+  publishTranslatedAudio(audioBlob, { fileName: translatedAudio.filename });
+  appendLog(`Fetched ${translatedAudio.noun} for request ${job.request_id} (${audioBlob.size} bytes).`);
+
+  setUiState("ready", `${titleCase(translatedAudio.noun)} ready.`);
+  await playTranslatedAudioViaWebAudio();
+
+/*
+  try {
+    els.translatedPlayButton.click();
+    setUiState("ready", "Translated audio ready.");
+  } catch (error) {
+    setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
+    setUiState("ready", "Translated audio ready.");
+    appendLog(`Browser playback did not start automatically: ${error.message}`);
+  }
+  */
 }
 
 function getDefaultServerUrl() {
@@ -410,6 +652,7 @@ async function startRecording(direction, button) {
   setSelectedDirection(direction);
   state.activeButton = button;
   clearLatestBlob();
+  clearTranslatedAudio();
   const stream = await ensureMicrophoneStream();
 
   if (!state.audioContext) {
@@ -525,6 +768,7 @@ async function uploadPreviewWav() {
   form.append("direction", state.selectedDirection);
 
   state.isUploading = true;
+  clearTranslatedAudio();
   els.diskWavInput.disabled = true;
   els.pickWavButton.disabled = true;
   els.uploadButton.disabled = true;
@@ -595,6 +839,14 @@ async function pollRequestStatus(statusUrl, pollAfterMs) {
     updateUiFromJob(payload);
 
     if (payload.status === "completed") {
+      if (
+        payload.direction === "wolof_to_english" &&
+        payload.result?.output_mode === "english_audio" &&
+        payload.result?.audio_url
+      ) {
+        appendLog(`Request ${payload.request_id} returned downloadable translated English audio.`);
+      }
+      await fetchTranslatedAudio(payload);
       return payload;
     }
 
@@ -610,6 +862,9 @@ function attachPushToTalkHandlers() {
     const button = event.currentTarget;
     const direction = button.dataset.direction;
     try {
+      // NEW: unlock the AudioContext on the first real user gesture before
+      // anything async (like getUserMedia) consumes the gesture token.
+      await unlockAudioContext();
       await startRecording(direction, button);
     } catch (error) {
       console.error(error);
@@ -657,6 +912,9 @@ function bindUi() {
   });
   els.pickWavButton.addEventListener("click", () => {
     els.diskWavInput.click();
+  });
+  els.translatedPlayButton.addEventListener("click", () => {
+    void playTranslatedAudioFromBlobUrl();
   });
   els.diskWavInput.addEventListener("change", (event) => {
     void handleDiskWavSelection(event);
