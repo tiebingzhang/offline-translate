@@ -201,6 +201,17 @@ function setPlaybackText(text) {
   els.playbackText.textContent = text;
 }
 
+function describeTranslatedAudio(job) {
+  const isEnglishAudio =
+    job?.direction === "wolof_to_english" ||
+    job?.result?.output_mode === "english_audio";
+
+  return {
+    noun: isEnglishAudio ? "translated English audio" : "translated Wolof audio",
+    filename: `${job?.request_id || "translation"}-${isEnglishAudio ? "english" : "wolof"}.m4a`,
+  };
+}
+
 function clearTranslatedAudio() {
   if (state.translatedAudioElement) {
     state.translatedAudioElement.pause();
@@ -395,17 +406,19 @@ function updateUiFromJob(job) {
 }
 
 async function fetchTranslatedAudio(job) {
+  const translatedAudio = describeTranslatedAudio(job);
   const audioUrl = job.result?.audio_url;
   if (!audioUrl) {
     clearTranslatedAudio();
-    setPlaybackText("This translation did not return downloadable audio.");
+    setPlaybackText(`This response did not return ${translatedAudio.noun}.`);
+    appendLog(`No downloadable ${translatedAudio.noun} was returned for request ${job.request_id}.`);
     return;
   }
 
   const resolvedAudioUrl = new URL(audioUrl, window.location.origin).toString();
-  setUiState("processing", "Fetching translated audio.");
-  setPlaybackText("Fetching translated audio.");
-  appendLog(`Fetching translated audio from ${resolvedAudioUrl}.`);
+  setUiState("processing", `Fetching ${translatedAudio.noun}.`);
+  setPlaybackText(`Fetching ${translatedAudio.noun}.`);
+  appendLog(`Fetching ${translatedAudio.noun} from ${resolvedAudioUrl}.`);
 
   const response = await fetch(resolvedAudioUrl, { method: "GET" });
   if (!response.ok) {
@@ -420,10 +433,10 @@ async function fetchTranslatedAudio(job) {
   }
 
   const audioBlob = await response.blob();
-  publishTranslatedAudio(audioBlob, { fileName: `${job.request_id}.m4a` });
-  appendLog(`Fetched translated audio for request ${job.request_id} (${audioBlob.size} bytes).`);
+  publishTranslatedAudio(audioBlob, { fileName: translatedAudio.filename });
+  appendLog(`Fetched ${translatedAudio.noun} for request ${job.request_id} (${audioBlob.size} bytes).`);
 
-  setUiState("ready", "Translated audio ready.");
+  setUiState("ready", `${titleCase(translatedAudio.noun)} ready.`);
   await playTranslatedAudioViaWebAudio();
 
 /*
@@ -826,6 +839,13 @@ async function pollRequestStatus(statusUrl, pollAfterMs) {
     updateUiFromJob(payload);
 
     if (payload.status === "completed") {
+      if (
+        payload.direction === "wolof_to_english" &&
+        payload.result?.output_mode === "english_audio" &&
+        payload.result?.audio_url
+      ) {
+        appendLog(`Request ${payload.request_id} returned downloadable translated English audio.`);
+      }
       await fetchTranslatedAudio(payload);
       return payload;
     }

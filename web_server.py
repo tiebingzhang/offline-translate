@@ -42,6 +42,7 @@ MAX_DECODED_DURATION_SEC = 75.0
 # (001-wolof-translate-mobile:T146)
 WOLOF_TTS_SAMPLE_RATE = 16_000
 WOLOF_TTS_AAC_BITRATE = 48_000
+ENGLISH_TTS_AAC_BITRATE = 48_000
 
 
 @dataclass(frozen=True)
@@ -450,30 +451,33 @@ def call_wolof_to_english_translation_service(text, translation_config):
     return result
 
 
-def speak_english_with_say(text, say_config):
-    if not say_config.play:
-        return {
-            "text": text,
-            "engine": "say",
-            "play": False,
-            "playback_started": False,
-            "skipped": True,
-        }
-
+def speak_english_with_say(text, say_config, output_path):
     say_path = shutil.which("say")
     if not say_path:
         raise RuntimeError("macOS 'say' command is not available on this system.")
 
-    command = [say_path]
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    render_command = [say_path]
     if say_config.voice:
-        command.extend(["-v", say_config.voice])
+        render_command.extend(["-v", say_config.voice])
     if say_config.rate is not None:
-        command.extend(["-r", str(say_config.rate)])
-    command.append(text)
+        render_command.extend(["-r", str(say_config.rate)])
+    render_command.extend(
+        [
+            "-o",
+            str(output_path),
+            "--file-format=m4af",
+            "--data-format=aac",
+            f"--bit-rate={ENGLISH_TTS_AAC_BITRATE}",
+            text,
+        ]
+    )
 
     try:
         subprocess.run(
-            command,
+            render_command,
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -484,13 +488,41 @@ def speak_english_with_say(text, say_config):
             raise RuntimeError(f"say failed: {stderr_text}") from exc
         raise RuntimeError(f"say failed with status {exc.returncode}") from exc
 
+    if not output_path.is_file():
+        raise RuntimeError("say failed to create the requested output audio file.")
+
+    playback_started = False
+    if say_config.play:
+        afplay_path = shutil.which("afplay")
+        playback_command = [afplay_path, str(output_path)] if afplay_path else [say_path]
+        if not afplay_path:
+            if say_config.voice:
+                playback_command.extend(["-v", say_config.voice])
+            if say_config.rate is not None:
+                playback_command.extend(["-r", str(say_config.rate)])
+            playback_command.append(text)
+        try:
+            subprocess.run(
+                playback_command,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            playback_started = True
+        except subprocess.CalledProcessError as exc:
+            stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
+            if stderr_text:
+                raise RuntimeError(f"say playback failed: {stderr_text}") from exc
+            raise RuntimeError(f"say playback failed with status {exc.returncode}") from exc
+
     return {
         "text": text,
         "engine": "say",
-        "play": True,
-        "playback_started": True,
+        "play": say_config.play,
+        "playback_started": playback_started,
         "voice": say_config.voice,
         "rate": say_config.rate,
+        "output_path_m4a": str(output_path),
     }
 
 
@@ -667,17 +699,18 @@ def process_request_job(
                 stage,
                 "Speaking English with macOS say.",
             )
-            speech_result = speak_english_with_say(translated_text, say_config)
+            speech_result = speak_english_with_say(
+                translated_text,
+                say_config,
+                Path("generated_audio") / f"{request_id}.m4a",
+            )
             record_stage_timing(job_store, request_id, stage, started_at_ms)
             output_mode = "english_audio"
 
-        # FR-039e — relative path; the mobile client resolves it against the
-        # configured backend base URL per FR-022. `audio_url` stays None for
-        # wolof_to_english (on-device TTS per FR-004).
-        # (001-wolof-translate-mobile:T147)
+        # Expose downloadable audio whenever the speech stage wrote an m4a.
         audio_url = (
             f"/api/requests/{request_id}/audio"
-            if direction == "english_to_wolof"
+            if speech_result and speech_result.get("output_path_m4a")
             else None
         )
         complete_job(
@@ -867,7 +900,11 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             return
 
         result = job.get("result") or {}
-        if job.get("status") != "completed" or result.get("output_mode") != "wolof_audio":
+        if (
+            job.get("status") != "completed"
+            or result.get("output_mode") not in {"wolof_audio", "english_audio"}
+            or not result.get("audio_url")
+        ):
             self._write_json(
                 HTTPStatus.CONFLICT,
                 {

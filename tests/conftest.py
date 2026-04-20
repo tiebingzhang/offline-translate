@@ -230,16 +230,23 @@ def run_english_to_wolof_job(bff_server, tmp_path):
 
 
 @pytest.fixture
-def enqueue_wolof_to_english_job(bff_server):
+def enqueue_wolof_to_english_job(bff_server, tmp_path):
     """Factory fixture: create a completed wolof_to_english job. The result
     has `output_mode != "wolof_audio"` so `/audio` must return 409.
     (001-wolof-translate-mobile:T144)
     """
     counter = {"n": 0}
 
-    def _factory(utterance_bytes: bytes = b"hello") -> str:
+    def _factory(utterance_bytes: bytes = b"hello", with_m4a: bool = False) -> str:
         counter["n"] += 1
         request_id = f"w2e{counter['n']:04d}"
+        generated_audio_dir = tmp_path / "generated_audio"
+        generated_audio_dir.mkdir(parents=True, exist_ok=True)
+        m4a_path = generated_audio_dir / f"{request_id}.m4a"
+        if with_m4a:
+            silent_samples = np.zeros(16_000, dtype=np.float32)
+            wav_bytes = _encode_pcm16_wav(silent_samples, 16_000)
+            m4a_path.write_bytes(encode_pcm_to_aac_m4a(wav_bytes))
         job = {
             "request_id": request_id,
             "status": "completed",
@@ -263,8 +270,12 @@ def enqueue_wolof_to_english_job(bff_server):
                 "whisper_response": {"text": "..."},
                 "translation_result": {"translated_text": "hello back"},
                 "output_mode": "english_audio",
-                "speech_result": {"engine": "say", "play": True},
-                "audio_url": None,
+                "speech_result": {
+                    "engine": "say",
+                    "play": True,
+                    **({"output_path_m4a": str(m4a_path)} if with_m4a else {}),
+                },
+                "audio_url": f"/api/requests/{request_id}/audio" if with_m4a else None,
             },
             "error": None,
         }
