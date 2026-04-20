@@ -21,6 +21,7 @@ const state = {
   selectedDirection: "english_to_wolof",
   activeButton: null,
   developerMode: false,
+  audioContextUnlocked: false, // NEW: tracks whether we've played a silent buffer
 };
 
 const els = {
@@ -125,14 +126,6 @@ function appendLog(message) {
   els.eventLog.prepend(item);
 }
 
-function appendTranslatedAudioDebug(message, details = null) {
-  appendLog(`Translated audio debug: ${message}`);
-  if (details) {
-    console.log("[translated-audio]", message, details);
-  } else {
-    console.log("[translated-audio]", message);
-  }
-}
 
 function describeMediaError(mediaError) {
   if (!mediaError) {
@@ -180,11 +173,7 @@ function attachTranslatedAudioDebugListeners(audio, label) {
     "error",
   ];
 
-  for (const eventName of events) {
-    audio.addEventListener(eventName, () => {
-      appendTranslatedAudioDebug(`${label} event=${eventName}`, snapshotAudioState(audio));
-    });
-  }
+
 }
 
 function clearLatestBlob() {
@@ -267,13 +256,6 @@ function publishTranslatedAudio(blob, options = {}) {
     lastBlobType: blob.type,
     lastBlobSize: blob.size,
   };
-  appendTranslatedAudioDebug("published translated audio blob", {
-    blobType: blob.type,
-    blobSize: blob.size,
-    blobUrl: state.translatedAudioObjectUrl,
-    fileName: options.fileName || "translation.m4a",
-    embedded: snapshotAudioState(audio),
-  });
   els.translatedPlayButton.disabled = false;
   els.translatedDownloadLink.href = state.translatedAudioObjectUrl;
   els.translatedDownloadLink.download = options.fileName || "translation.m4a";
@@ -289,10 +271,6 @@ async function playTranslatedAudioFromBlobUrl() {
   }
 
   try {
-    appendTranslatedAudioDebug("play button path starting", {
-      blobUrl: state.translatedAudioObjectUrl,
-      embedded: state.translatedAudioElement ? snapshotAudioState(state.translatedAudioElement) : null,
-    });
     const audio = new Audio(state.translatedAudioObjectUrl);
     attachTranslatedAudioDebugListeners(audio, "button");
     window.__translatedAudioDebug = {
@@ -300,20 +278,67 @@ async function playTranslatedAudioFromBlobUrl() {
       blobUrl: state.translatedAudioObjectUrl,
       buttonAudio: audio,
     };
-    appendTranslatedAudioDebug("button audio element created", snapshotAudioState(audio));
     await audio.play();
     setPlaybackText("Playing translated audio.");
     appendLog("Translated audio playback started from blob URL.");
-    appendTranslatedAudioDebug("button audio play() resolved", snapshotAudioState(audio));
   } catch (error) {
     setPlaybackText("Translated audio could not be played.");
     appendLog(`Translated audio playback failed: ${error.message}`);
-    appendTranslatedAudioDebug("button audio play() rejected", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    });
   }
+}
+
+async function playTranslatedAudioViaWebAudio() {
+  if (!state.translatedAudioObjectUrl) {
+    return;
+  }
+
+  try {
+    const response = await fetch(state.translatedAudioObjectUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await state.audioContext.decodeAudioData(arrayBuffer);
+    const source = state.audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(state.audioContext.destination);
+    source.start(0);
+    setPlaybackText("Playing translated audio.");
+    appendLog("Translated audio autoplay started via WebAudio.");
+  } catch (error) {
+    setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
+    appendLog(`Translated audio WebAudio autoplay failed: ${error.message}`);
+  }
+}
+
+
+// NEW: plays a silent one-frame buffer through the AudioContext during a real
+// user gesture (pointerdown on a talk button). This marks the AudioContext as
+// "unlocked" by the browser, so that subsequent programmatic audio.play()
+// calls — e.g. autoplay after a translation completes — are allowed.
+async function unlockAudioContext() {
+  if (state.audioContextUnlocked) {
+    return;
+  }
+
+  // Create the AudioContext now if it doesn't exist yet so that the unlock
+  // gesture and the context creation happen in the same user-gesture callback.
+  if (!state.audioContext) {
+    state.audioContext = new AudioContext();
+    state.sampleRate = state.audioContext.sampleRate;
+    els.sampleRateValue.textContent = `${state.sampleRate} Hz`;
+  }
+
+  if (state.audioContext.state === "suspended") {
+    await state.audioContext.resume();
+  }
+
+  // Play a one-frame silent buffer. This is the gesture that browsers require.
+  const buffer = state.audioContext.createBuffer(1, 1, state.audioContext.sampleRate);
+  const source = state.audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(state.audioContext.destination);
+  source.start(0);
+
+  state.audioContextUnlocked = true;
+  appendLog("AudioContext unlocked via silent buffer.");
 }
 
 function resolveStatusUrl(statusUrl) {
@@ -381,20 +406,8 @@ async function fetchTranslatedAudio(job) {
   setUiState("processing", "Fetching translated audio.");
   setPlaybackText("Fetching translated audio.");
   appendLog(`Fetching translated audio from ${resolvedAudioUrl}.`);
-  appendTranslatedAudioDebug("fetching translated audio", {
-    requestId: job.request_id,
-    audioUrl,
-    resolvedAudioUrl,
-  });
 
   const response = await fetch(resolvedAudioUrl, { method: "GET" });
-  appendTranslatedAudioDebug("translated audio fetch response received", {
-    status: response.status,
-    ok: response.ok,
-    contentType: response.headers.get("content-type"),
-    contentLength: response.headers.get("content-length"),
-    url: response.url,
-  });
   if (!response.ok) {
     let message = `Audio fetch failed with status ${response.status}`;
     try {
@@ -407,30 +420,22 @@ async function fetchTranslatedAudio(job) {
   }
 
   const audioBlob = await response.blob();
-  appendTranslatedAudioDebug("translated audio blob created", {
-    blobType: audioBlob.type,
-    blobSize: audioBlob.size,
-  });
   publishTranslatedAudio(audioBlob, { fileName: `${job.request_id}.m4a` });
   appendLog(`Fetched translated audio for request ${job.request_id} (${audioBlob.size} bytes).`);
 
+  setUiState("ready", "Translated audio ready.");
+  await playTranslatedAudioViaWebAudio();
+
+/*
   try {
-    appendTranslatedAudioDebug("auto-triggering translated play button", {
-      disabled: els.translatedPlayButton.disabled,
-      blobUrl: state.translatedAudioObjectUrl,
-    });
     els.translatedPlayButton.click();
     setUiState("ready", "Translated audio ready.");
   } catch (error) {
     setPlaybackText("Translated audio ready. Press play if autoplay was blocked.");
     setUiState("ready", "Translated audio ready.");
     appendLog(`Browser playback did not start automatically: ${error.message}`);
-    appendTranslatedAudioDebug("auto-triggering play button threw", {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    });
   }
+  */
 }
 
 function getDefaultServerUrl() {
@@ -837,6 +842,9 @@ function attachPushToTalkHandlers() {
     const button = event.currentTarget;
     const direction = button.dataset.direction;
     try {
+      // NEW: unlock the AudioContext on the first real user gesture before
+      // anything async (like getUserMedia) consumes the gesture token.
+      await unlockAudioContext();
       await startRecording(direction, button);
     } catch (error) {
       console.error(error);
@@ -886,10 +894,6 @@ function bindUi() {
     els.diskWavInput.click();
   });
   els.translatedPlayButton.addEventListener("click", () => {
-    appendTranslatedAudioDebug("translated play button clicked", {
-      disabled: els.translatedPlayButton.disabled,
-      blobUrl: state.translatedAudioObjectUrl,
-    });
     void playTranslatedAudioFromBlobUrl();
   });
   els.diskWavInput.addEventListener("change", (event) => {
