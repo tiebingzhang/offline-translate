@@ -73,9 +73,27 @@ describe('audio/player', () => {
     await player.playResult(baseTextOnly);
 
     expect(createAudioPlayer).not.toHaveBeenCalled();
-    expect(speakText).toHaveBeenCalledWith('Good morning', {
-      language: 'en-US',
-    });
+    expect(speakText).toHaveBeenCalledWith(
+      'Good morning',
+      expect.objectContaining({ language: 'en-US' }),
+    );
+  });
+
+  test('wolof_to_english text-only result: invokes onEnded when TTS backend fires onDone', async () => {
+    const { deps, speakText } = makeFakePlayer();
+    const player = makePlayer(deps);
+    const onEnded = jest.fn();
+
+    await player.playResult(baseTextOnly, { onEnded });
+
+    const speakCall = speakText.mock.calls[0] as [
+      string,
+      { language: string; onDone?: () => void; onStopped?: () => void; onError?: () => void },
+    ];
+    const passedOptions = speakCall[1];
+    expect(typeof passedOptions.onDone).toBe('function');
+    passedOptions.onDone?.();
+    expect(onEnded).toHaveBeenCalledTimes(1);
   });
 
   test('invokes onEnded callback when playback finishes naturally', async () => {

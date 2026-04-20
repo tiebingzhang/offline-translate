@@ -17,7 +17,15 @@ interface AudioPlayerLike {
 
 export interface PlayerDeps {
   createAudioPlayer: (source: string) => AudioPlayerLike;
-  speakText: (text: string, options: { language: string }) => void;
+  speakText: (
+    text: string,
+    options: {
+      language: string;
+      onDone?: () => void;
+      onStopped?: () => void;
+      onError?: () => void;
+    },
+  ) => void;
   stopSpeech?: () => void;
   configureForPlayback?: () => Promise<void>;
 }
@@ -98,7 +106,15 @@ export function makePlayer(deps: PlayerDeps): Player {
       return;
     }
 
-    deps.speakText(result.translatedText, { language: EN_US });
+    // All three terminal TTS callbacks route to onEnded so any exit path
+    // (natural finish, Speech.stop(), backend error) releases the pipeline
+    // from the 'playing' phase (001-wolof-translate-mobile:bugfix-tts-onEnded)
+    deps.speakText(result.translatedText, {
+      language: EN_US,
+      onDone: opts.onEnded,
+      onStopped: opts.onEnded,
+      onError: opts.onEnded,
+    });
   }
 
   function pause(): void {
@@ -129,7 +145,13 @@ export function makePlayer(deps: PlayerDeps): Player {
 
 export const defaultPlayer: Player = makePlayer({
   createAudioPlayer: (source) => createAudioPlayer(source) as unknown as AudioPlayerLike,
-  speakText: (text, options) => Speech.speak(text, options),
+  speakText: (text, options) =>
+    Speech.speak(text, {
+      language: options.language,
+      onDone: options.onDone,
+      onStopped: options.onStopped,
+      onError: options.onError,
+    }),
   stopSpeech: () => {
     void Speech.stop();
   },
