@@ -147,7 +147,16 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
           stageDetail: state.stageDetail ?? null,
         });
         if (state.status === 'completed' && state.result) {
-          const localAudioUri = state.result.audioUrl
+          // FR-004 (amended Session 2026-04-20 Q1/Q4): the post-merge BFF
+          // populates audio_url on wolof_to_english completions with a
+          // server-rendered English m4a. The mobile client MUST ignore that
+          // URL and produce English TTS on-device via expo-speech. Skip the
+          // downloadAudio call unconditionally for wolof_to_english, even
+          // when audio_url is non-null. (001-wolof-translate-mobile:T156)
+          const shouldDownload =
+            state.result.audioUrl !== null &&
+            state.result.direction !== 'wolof_to_english';
+          const localAudioUri = shouldDownload
             ? await client.downloadAudio(requestId)
             : null;
           terminal = {
@@ -165,26 +174,52 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
         }
       }
       if (terminal) {
+        // Session 2026-04-20 Q6 degradation: when english_to_wolof download
+        // fails (localAudioUri === null), append a user-visible suffix to
+        // translatedText and skip playback entirely. Falling back to
+        // expo-speech would mispronounce Wolof with an English voice, which
+        // violates FR-004's spirit. The playbackStarted/playbackEnded
+        // dispatch pair below keeps phase listeners consistent; the reducer
+        // in state-machine.ts:224-232 tolerates this synthetic cycle because
+        // 'playbackStarted' requires phase === 'completed' and
+        // 'playbackEnded' requires phase === 'playing'.
+        // (001-wolof-translate-mobile:T155) (001-wolof-translate-mobile:T157)
+        const isEnglishToWolofWithoutAudio =
+          terminal.direction === 'english_to_wolof' &&
+          terminal.localAudioUri === null;
+        if (isEnglishToWolofWithoutAudio) {
+          terminal = {
+            ...terminal,
+            translatedText: `${terminal.translatedText} (failed to download audio)`,
+          };
+        }
         dispatch({ type: 'jobCompleted', result: terminal });
         await pendingJobsRepo.delete(requestId).catch(() => undefined);
         const capturedBefore = get().capturedAudioUri;
         await persistToHistory(terminal);
         await unlinkTransientCapture(capturedBefore, terminal.localAudioUri);
-        dispatch({ type: 'playbackStarted' });
-        void defaultPlayer.playResult(terminal, {
-          onEnded: () => dispatch({ type: 'playbackEnded' }),
-          // FR-008: on an OS interruption (phone call, Siri, alarm) during
-          // playback, pause the native player and land in 'completed' so the
-          // result stays visible and the user can replay. The 'playbackEnded'
-          // reducer is a no-op unless phase === 'playing', so a stray second
-          // invocation (e.g. from a spurious status blip) is idempotent.
-          // (001-wolof-translate-mobile:T079)
-          onInterruptionBegan: () => {
-            if (get().phase !== 'playing') return;
-            defaultPlayer.pause();
-            dispatch({ type: 'playbackEnded' });
-          },
-        });
+        if (isEnglishToWolofWithoutAudio) {
+          // Synthetic playbackStarted→playbackEnded cycle documented above.
+          // (001-wolof-translate-mobile:T157)
+          dispatch({ type: 'playbackStarted' });
+          dispatch({ type: 'playbackEnded' });
+        } else {
+          dispatch({ type: 'playbackStarted' });
+          void defaultPlayer.playResult(terminal, {
+            onEnded: () => dispatch({ type: 'playbackEnded' }),
+            // FR-008: on an OS interruption (phone call, Siri, alarm) during
+            // playback, pause the native player and land in 'completed' so the
+            // result stays visible and the user can replay. The 'playbackEnded'
+            // reducer is a no-op unless phase === 'playing', so a stray second
+            // invocation (e.g. from a spurious status blip) is idempotent.
+            // (001-wolof-translate-mobile:T079)
+            onInterruptionBegan: () => {
+              if (get().phase !== 'playing') return;
+              defaultPlayer.pause();
+              dispatch({ type: 'playbackEnded' });
+            },
+          });
+        }
       }
     } catch (err) {
       handlePipelineError(err);

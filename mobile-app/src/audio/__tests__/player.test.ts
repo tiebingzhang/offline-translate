@@ -30,14 +30,19 @@ const baseWolofAudio: TranslationResult = {
   completedAtMs: 1_713_276_005_083,
 };
 
+// Q7 fixture modernization (001-wolof-translate-mobile:T154): post-merge BFF
+// populates audioUrl + outputMode='english_audio' on wolof_to_english. The
+// player keys its TTS branch off localAudioUri (not audioUrl / outputMode),
+// so keeping localAudioUri=null preserves the existing assertions for the
+// on-device expo-speech path.
 const baseTextOnly: TranslationResult = {
   requestId: 'e5f6g7h8',
   direction: 'wolof_to_english',
   targetLanguage: 'english',
   transcribedText: 'Jamm nga fanaan',
   translatedText: 'Good morning',
-  outputMode: 'text_only',
-  audioUrl: null,
+  outputMode: 'english_audio',
+  audioUrl: '/api/requests/e5f6g7h8/audio',
   localAudioUri: null,
   completedAtMs: 1_713_276_010_083,
 };

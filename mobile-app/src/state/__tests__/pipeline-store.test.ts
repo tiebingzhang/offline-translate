@@ -173,12 +173,17 @@ describe('pipeline-store completion path', () => {
   });
 
   test('wolof_to_english text-only completion: persists TTS-only entry, unlinks transient (FR-010, FR-011, FR-021)', async () => {
+    // Q7 fixture modernization (001-wolof-translate-mobile:T154): the
+    // post-merge BFF populates audioUrl + outputMode='english_audio' on
+    // wolof_to_english. The T156 guard short-circuits downloadAudio, so
+    // localAudioUri stays null and this test continues to validate the
+    // TTS-only persistence branch unchanged.
     mockDownloadAudio.mockResolvedValue(null);
     mockPollUntilTerminal.mockReturnValue(
       singleCompletion(
         makeCompletedState({
-          audioUrl: null,
-          outputMode: 'text_only',
+          audioUrl: '/api/requests/req-1/audio',
+          outputMode: 'english_audio',
           direction: 'wolof_to_english',
           targetLanguage: 'english',
           transcribedText: 'Jamm',
@@ -243,5 +248,87 @@ describe('pipeline-store completion path', () => {
 
     expect(mockHistoryInsert).toHaveBeenCalledTimes(1);
     expect(deleteAsync).not.toHaveBeenCalled();
+  });
+
+  test('wolof_to_english with populated audio_url skips download (Q4)', async () => {
+    // Session 2026-04-20 Q4 guard: post-merge BFF populates audio_url for
+    // wolof_to_english completions (server-rendered English m4a). The mobile
+    // client MUST ignore it per FR-004 (on-device expo-speech) and must NOT
+    // GET /api/requests/{id}/audio. (001-wolof-translate-mobile:T152)
+    mockPollUntilTerminal.mockReturnValue(
+      singleCompletion(
+        makeCompletedState({
+          audioUrl: '/api/requests/req-1/audio',
+          outputMode: 'english_audio',
+          direction: 'wolof_to_english',
+          targetLanguage: 'english',
+          transcribedText: 'Jamm',
+          translatedText: 'Peace',
+        }),
+      ),
+    );
+
+    const capturedUri = 'file:///cache/in-flight/q4.m4a';
+    usePipelineStore.getState().pressStart('wolof_to_english');
+    await usePipelineStore.getState().pressRelease(capturedUri, 3);
+
+    expect(mockDownloadAudio).not.toHaveBeenCalled();
+    expect(mockPlayResult).toHaveBeenCalledTimes(1);
+    const terminalArg = mockPlayResult.mock.calls[0]![0] as { localAudioUri: unknown };
+    expect(terminalArg.localAudioUri).toBeNull();
+    expect(mockHistoryInsert).toHaveBeenCalledTimes(1);
+    expect(mockHistoryInsert.mock.calls[0]![0]).toMatchObject({
+      requestId: 'req-1',
+      direction: 'wolof_to_english',
+      transcribedText: 'Jamm',
+      translatedText: 'Peace',
+      audioPath: '',
+      audioByteSize: 0,
+    });
+    expect(deleteAsync).toHaveBeenCalledTimes(1);
+    expect(deleteAsync).toHaveBeenCalledWith(
+      capturedUri,
+      expect.objectContaining({ idempotent: true }),
+    );
+  });
+
+  test('english_to_wolof download failure appends suffix and skips playback (Q6)', async () => {
+    // Session 2026-04-20 Q6 degradation path: when the server-rendered Wolof
+    // m4a download fails, do NOT fall back to expo-speech (which would
+    // mispronounce Wolof with an English voice). Append a user-visible suffix
+    // to translatedText and skip native/TTS playback. The synthetic
+    // playbackStarted/playbackEnded pair keeps downstream state listeners
+    // consistent. (001-wolof-translate-mobile:T153)
+    mockDownloadAudio.mockResolvedValue(null);
+    mockPollUntilTerminal.mockReturnValue(
+      singleCompletion(
+        makeCompletedState({
+          audioUrl: '/api/requests/req-1/audio',
+          outputMode: 'wolof_audio',
+          direction: 'english_to_wolof',
+          targetLanguage: 'wolof',
+          transcribedText: 'Peace',
+          translatedText: 'Jàmm',
+        }),
+      ),
+    );
+
+    const capturedUri = 'file:///cache/in-flight/q6.m4a';
+    usePipelineStore.getState().pressStart('english_to_wolof');
+    await usePipelineStore.getState().pressRelease(capturedUri, 3);
+
+    expect(mockPlayResult).not.toHaveBeenCalled();
+    expect(mockHistoryInsert).toHaveBeenCalledTimes(1);
+    expect(mockHistoryInsert.mock.calls[0]![0]).toMatchObject({
+      requestId: 'req-1',
+      direction: 'english_to_wolof',
+      translatedText: 'Jàmm (failed to download audio)',
+      audioPath: '',
+    });
+    expect(deleteAsync).toHaveBeenCalledWith(
+      capturedUri,
+      expect.objectContaining({ idempotent: true }),
+    );
+    expect(usePipelineStore.getState().phase).toBe('completed');
   });
 });

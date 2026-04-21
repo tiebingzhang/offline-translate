@@ -149,10 +149,12 @@ Two main terminal shapes and one transient shape. Every response includes `poll_
 }
 ```
 
-> **`audio_url`** is populated on every `english_to_wolof` completion
-> response as of FR-039 (folded in-session 2026-04-17). It is `null` for
-> `wolof_to_english` completions (on-device TTS per FR-004). The BE-1
-> prerequisite previously tracked in `research.md` §10 R-A is now resolved.
+> **`audio_url`** — The BFF MAY populate `audio_url` on completions of
+> either direction as of the 2026-04-20 merge (server-rendered English m4a
+> for `wolof_to_english`). The mobile client MUST ignore `audio_url` for
+> `wolof_to_english` per FR-004 (on-device `expo-speech`);
+> `wolof_to_english` `audio_url` values, when populated, MUST NOT be
+> downloaded, persisted, or played. See Session 2026-04-20 Q1/Q2/Q4.
 
 **Terminal — failed**:
 
@@ -290,6 +292,7 @@ Every handler below MUST exist in `src/api/__tests__/bff-client.test.ts` BEFORE 
 - If the BFF adds a field in `result` or `error`, the client passes it through to the dev-mode raw-response view (FR-015c) unchanged but ignores it for domain logic unless explicitly consumed.
 - If the BFF removes or renames any of `request_id`, `status`, `stage`, `direction`, `poll_after_ms`, `result.transcribed_text`, `result.translated_text`, `result.output_mode`, `result.audio_url`, the contract tests fail and a coordinated BFF+mobile change is required.
 - **2026-04-17**: `audio_url` is now always populated on `english_to_wolof` completion responses (FR-039). Consumers that previously treated it as nullable on that direction must still handle `null` for `wolof_to_english` completions.
+- **2026-04-20**: `audio_url` on `wolof_to_english` completion responses is now server-rendered (English m4a via macOS `say -o`) but **client-ignored** — it is no longer "always null". The mobile client short-circuits `downloadAudio` for `wolof_to_english` regardless of `audio_url` per FR-004 (on-device `expo-speech`); the 15 MSW contract tests in §5 and C11/C12 behavior are unchanged. See Session 2026-04-20 Q1/Q2/Q4.
 
 ---
 
