@@ -123,6 +123,34 @@ describe('audio/player', () => {
     expect(onEnded).toHaveBeenCalledTimes(1);
   });
 
+  test('playResult: listener fires onEnded once on persistent isLoaded:false status (Bug C)', async () => {
+    // Context7-confirmed AudioStatus payload (expo-audio SDK 55) surfaces
+    // `isLoaded: boolean` alongside `playing` / `didJustFinish`, so a load
+    // failure (corrupt m4a / 0-byte file / unlink race / native load error)
+    // arrives as repeated `{ isLoaded: false, playing: false }` events
+    // with no `didJustFinish` ever firing. The listener MUST treat this as a
+    // terminal condition, invoke onEnded exactly once, and de-duplicate on
+    // subsequent load-failure events. (001-wolof-translate-mobile:T165)
+    const { deps, instance } = makeFakePlayer();
+    const player = makePlayer(deps);
+    const onEnded = jest.fn();
+
+    await player.playResult(baseWolofAudio, { onEnded });
+
+    const addListenerMock = instance.addListener as unknown as jest.Mock;
+    const listenerCall = addListenerMock.mock.calls[0] as [
+      string,
+      (status: { isLoaded?: boolean; playing?: boolean; didJustFinish?: boolean }) => void,
+    ];
+    expect(listenerCall[0]).toBe('playbackStatusUpdate');
+    const listener = listenerCall[1];
+
+    listener({ isLoaded: false, playing: false });
+    listener({ isLoaded: false, playing: false });
+
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
   test('stop() releases the current player and silences speech', async () => {
     const { deps, instance, speakText } = makeFakePlayer();
     const stopSpeech = jest.fn();
