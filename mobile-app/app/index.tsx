@@ -62,7 +62,18 @@ export default function MainScreen() {
   const discard = usePipelineStore((s) => s.discard);
   const retry = usePipelineStore((s) => s.retry);
 
-  const onPermissionDenied = useMicPermissionDeniedHandler();
+  const alertPermissionDenied = useMicPermissionDeniedHandler();
+
+  // Bug D fix (bug_fix.md §Bug D): the permission-denial path must also call
+  // `discard()` so the pipeline phase returns to 'idle'. Without this, phase
+  // is stuck at 'recording' (set by pressStart before start() ran) with no UI
+  // escape — handlePressIn early-returns on phase !== idle/completed, and
+  // handlePressOut early-returns on recorder.status !== 'recording'.
+  // (001-wolof-translate-mobile:T172)
+  const onPermissionDenied = useCallback(() => {
+    alertPermissionDenied();
+    discard();
+  }, [alertPermissionDenied, discard]);
 
   const recorder = useRecorder({
     onPermissionDenied,
@@ -78,7 +89,13 @@ export default function MainScreen() {
       discard();
     }
     pressStart(targetDirection);
-    void recorder.start();
+    // Bug D fix: catch recorder-start rejections (configureForRecording,
+    // prepareToRecordAsync, or record() can throw on hardware contention or
+    // session-mode failure) and unwind the phase to 'idle' via discard().
+    // (001-wolof-translate-mobile:T172)
+    recorder.start().catch(() => {
+      discard();
+    });
   };
 
   const handlePressOut = async () => {
