@@ -532,7 +532,7 @@ Current site: `src/state/pipeline-store.ts:207-222` (both TTS and audio-file pla
 
 #### Commit
 
-- [ ] T163 [Commit] `001-wolof-translate-mobile:Phase10-BugB: recover playing phase from playResult rejection` — single-bug-scoped commit covering T161–T162 per Principle VI. Commit body cites `bug_fix.md` §Bug B and the three realistic triggers (audio-session conflict, corrupt file, sync Speech.speak throw). (001-wolof-translate-mobile:T163)
+- [X] T163 [Commit] `001-wolof-translate-mobile:Phase10-BugB: recover playing phase from playResult rejection` — single-bug-scoped commit covering T161–T162 per Principle VI. Commit body cites `bug_fix.md` §Bug B and the three realistic triggers (audio-session conflict, corrupt file, sync Speech.speak throw). (001-wolof-translate-mobile:T163)
 
 ### Bug C — `playbackStatusUpdate` listener misses load-failure completion
 
@@ -555,7 +555,7 @@ Current site: `src/audio/player.ts:74-84`. Listener fires `opts.onEnded` only on
 
 #### Commit
 
-- [ ] T168 [Commit] `001-wolof-translate-mobile:Phase10-BugC: fire onEnded on audio load failure` — single-bug-scoped commit covering T164–T167 per Principle VI. Commit body cites `bug_fix.md` §Bug C, the three realistic triggers (corrupt file, unlink race, native load error), and which option (1 listener-keyed, 2 watchdog, or both) was adopted and why. (001-wolof-translate-mobile:T168)
+- [X] T168 [Commit] `001-wolof-translate-mobile:Phase10-BugC: fire onEnded on audio load failure` — single-bug-scoped commit covering T164–T167 per Principle VI. Commit body cites `bug_fix.md` §Bug C, the three realistic triggers (corrupt file, unlink race, native load error), and which option (1 listener-keyed, 2 watchdog, or both) was adopted and why. (001-wolof-translate-mobile:T168)
 
 ### Bug D — inert `recording` phase after failed mic start
 
@@ -581,10 +581,10 @@ Current sites:
 
 #### Commit
 
-- [ ] T173 [Commit] `001-wolof-translate-mobile:Phase10-BugD: recover recording phase from start failures` — single-bug-scoped commit covering T169–T172 per Principle VI. Commit body cites `bug_fix.md` §Bug D and the four realistic triggers (permission revoke mid-session, first-launch denial, `prepareToRecordAsync` hardware contention, `configureForRecording` session-mode failure). (001-wolof-translate-mobile:T173)
+- [X] T173 [Commit] `001-wolof-translate-mobile:Phase10-BugD: recover recording phase from start failures` — single-bug-scoped commit covering T169–T172 per Principle VI. Commit body cites `bug_fix.md` §Bug D and the four realistic triggers (permission revoke mid-session, first-launch denial, `prepareToRecordAsync` hardware contention, `configureForRecording` session-mode failure). (001-wolof-translate-mobile:T173)
 
 ### Bookkeeping
 
-- [ ] T174 Move `mobile-app/bug_fix.md` into `specs/001-wolof-translate-mobile/bug-log.md` (or delete it if Phase 10 closes every item) so the repo root stays clean and the audit trail lives with the spec. Do this as part of T173's commit (tiny diff, same bug-scope) OR as a separate housekeeping commit — whichever keeps per-commit diffs tightly scoped. (001-wolof-translate-mobile:T174)
+- [X] T174 Move `mobile-app/bug_fix.md` into `specs/001-wolof-translate-mobile/bug-log.md` (or delete it if Phase 10 closes every item) so the repo root stays clean and the audit trail lives with the spec. Do this as part of T173's commit (tiny diff, same bug-scope) OR as a separate housekeeping commit — whichever keeps per-commit diffs tightly scoped. (001-wolof-translate-mobile:T174)
 
 **Checkpoint — Phase 10**: all three stuck-phase escape paths closed. `playing` phase recovers from `playResult` rejection (T162) and from audio load failure (T167). `recording` phase recovers from permission denial (T172a) and `recorder.start()` rejection (T172b). No new BFF change, no new UI surface, no new dependency. `bug_fix.md` is retired.
