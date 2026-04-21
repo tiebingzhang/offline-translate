@@ -205,20 +205,36 @@ export const usePipelineStore = create<PipelineStore>((set, get) => {
           dispatch({ type: 'playbackEnded' });
         } else {
           dispatch({ type: 'playbackStarted' });
-          void defaultPlayer.playResult(terminal, {
-            onEnded: () => dispatch({ type: 'playbackEnded' }),
-            // FR-008: on an OS interruption (phone call, Siri, alarm) during
-            // playback, pause the native player and land in 'completed' so the
-            // result stays visible and the user can replay. The 'playbackEnded'
-            // reducer is a no-op unless phase === 'playing', so a stray second
-            // invocation (e.g. from a spurious status blip) is idempotent.
-            // (001-wolof-translate-mobile:T079)
-            onInterruptionBegan: () => {
-              if (get().phase !== 'playing') return;
-              defaultPlayer.pause();
+          // Phase 10 Bug B: do NOT `void` the returned promise. If playResult
+          // rejects before the internal status listener is wired (audio-session
+          // conflict, corrupt file, sync Speech.speak throw), the rejection
+          // must flip phase back to 'completed' so the direction buttons
+          // re-enable. The 'playbackEnded' reducer guards
+          // `if (state.phase !== 'playing') return state;` (see
+          // src/pipeline/state-machine.ts:229-232), so a late-arriving onEnded
+          // following this synthetic dispatch is idempotent. The result text is
+          // already on screen — nothing to retry — so we do not surface a
+          // RetryBanner here; we just log and return to 'completed'.
+          // (001-wolof-translate-mobile:T162)
+          defaultPlayer
+            .playResult(terminal, {
+              onEnded: () => dispatch({ type: 'playbackEnded' }),
+              // FR-008: on an OS interruption (phone call, Siri, alarm) during
+              // playback, pause the native player and land in 'completed' so the
+              // result stays visible and the user can replay. The 'playbackEnded'
+              // reducer is a no-op unless phase === 'playing', so a stray second
+              // invocation (e.g. from a spurious status blip) is idempotent.
+              // (001-wolof-translate-mobile:T079)
+              onInterruptionBegan: () => {
+                if (get().phase !== 'playing') return;
+                defaultPlayer.pause();
+                dispatch({ type: 'playbackEnded' });
+              },
+            })
+            .catch((err) => {
+              log('error', 'playback', 'playResult rejected', { err: String(err) });
               dispatch({ type: 'playbackEnded' });
-            },
-          });
+            });
         }
       }
     } catch (err) {

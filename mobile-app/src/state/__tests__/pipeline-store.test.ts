@@ -331,4 +331,35 @@ describe('pipeline-store completion path', () => {
     );
     expect(usePipelineStore.getState().phase).toBe('completed');
   });
+
+  test('playResult rejection recovers the playing phase to completed (Bug B)', async () => {
+    // Phase 10 Bug B: if playResult rejects before the internal status
+    // listener is wired (audio-session conflict, corrupt file, sync
+    // Speech.speak throw), the current `void` call discards the rejection
+    // and the store strands at phase='playing' with no RetryBanner escape.
+    // (001-wolof-translate-mobile:T161)
+    mockDownloadAudio.mockResolvedValue('file:///document/audio/req-1.m4a');
+    mockPlayResult.mockRejectedValueOnce(new Error('boom'));
+    mockPollUntilTerminal.mockReturnValue(
+      singleCompletion(
+        makeCompletedState({ audioUrl: '/api/req-1/audio', outputMode: 'wolof_audio' }),
+      ),
+    );
+
+    const capturedUri = 'file:///cache/in-flight/bugb.m4a';
+    usePipelineStore.getState().pressStart('english_to_wolof');
+    await usePipelineStore.getState().pressRelease(capturedUri, 3);
+    // Flush microtasks so the .catch handler attached to playResult runs.
+    // (001-wolof-translate-mobile:T161)
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(usePipelineStore.getState().phase).toBe('completed');
+    expect(mockHistoryInsert).toHaveBeenCalledTimes(1);
+    expect(deleteAsync).toHaveBeenCalledWith(
+      capturedUri,
+      expect.objectContaining({ idempotent: true }),
+    );
+    expect(mockPlayResult).toHaveBeenCalledTimes(1);
+  });
 });
