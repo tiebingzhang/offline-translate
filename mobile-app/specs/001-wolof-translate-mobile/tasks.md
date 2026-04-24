@@ -468,3 +468,123 @@ Then sequentially implement T047 → T048/T049/T051 (parallel) → T050 → T052
 - Every task's implementation file belongs to `mobile-app/` or `specs/001-wolof-translate-mobile/`, **with two exceptions**: (1) the FR-038 (BE-2) tasks T135a–T143 touch `offline-translate/web_server.py`, `offline-translate/pyproject.toml`, `offline-translate/tests/`, and `offline-translate/deploy-dev.md`; (2) the FR-039 (BE-1) tasks T144–T151 touch `offline-translate/web_server.py`, `offline-translate/tests/test_audio_endpoint.py`, `offline-translate/tests/conftest.py`, and `offline-translate/generated_audio/` (written at runtime). Both exceptions are covered by the Constitution V amendment in `plan.md` — the mobile-app tree and `offline-translate/` share the same git root, so those files are on the same `001-wolof-translate-mobile` feature branch.
 - Comments added to source MUST carry the `(001-wolof-translate-mobile:<TaskID>)` suffix (Constitution IV) — example: `// Honor pollAfterMs from the BFF (001-wolof-translate-mobile:T047)`.
 - Tests are mandatory for BFF contract surfaces (Constitution II); verify that each contract test FAILS on first write before the matching implementation task begins.
+
+---
+
+## Phase 9 — Session 2026-04-20 contract-drift repair (Q1–Q8)
+
+**Goal**: Repair the contract drift introduced by the 2026-04-20 merge of `main` into `001-wolof-translate-mobile` (which began populating `audio_url` for `wolof_to_english` completions via server-rendered macOS `say -o` m4a). The mobile client must (a) ignore `audio_url` for `wolof_to_english` and keep using on-device `expo-speech` (Q1 → amended FR-004 + Q4 guard), and (b) degrade gracefully for `english_to_wolof` when `downloadAudio` returns null by appending a user-visible suffix instead of mispronouncing Wolof through an English voice (Q6). Two test fixtures are modernized to the new wire shape (Q7), and the BFF API contract doc is rewritten to match reality (Q2). Session 2026-04-20 Q5 and Q8 deliberately reject BFF changes; this phase is **mobile + contract-doc only**.
+
+**Scope**: Client-only + contract-doc-only per `plan.md` §Session 2026-04-20 Design Detail. No BFF task. No new UI surface (only delta is a string suffix on an existing text surface — Principle VIII N/A). No new dependency. No schema change. One commit per Principle VI.
+
+**Independent Test**: With both guards + the fixture updates landed, `npm test && npm run lint` from `mobile-app/` passes. A live `wolof_to_english` translation against the post-merge BFF (which populates `audio_url`) shows (a) no network GET to `/api/requests/{id}/audio` in the dev-mode network log, (b) TTS audio via `expo-speech` as before, (c) history row with empty `audio_path` sentinel. A live `english_to_wolof` translation where the BFF download returns 4xx/5xx shows the translated Wolof text with a trailing `"(failed to download audio)"`, no TTS fallback, and history row with empty `audio_path`.
+
+### Tests (TDD — Constitution II; authored BEFORE implementation)
+
+- [X] T152 [P] [US1] Add a new Q4 guard test in `mobile-app/src/state/__tests__/pipeline-store.test.ts` titled `wolof_to_english with populated audio_url skips download (Q4)` — arrange `mockPollUntilTerminal` to yield a `wolof_to_english` completion with the post-merge wire shape (`outputMode: 'english_audio'`, `audioUrl: '/api/requests/req-1/audio'`, direction `wolof_to_english`, transcribed + translated text populated). Drive `pressStart('wolof_to_english')` → `pressRelease(capturedUri, 3)`. Assert `mockDownloadAudio` is NOT called (`expect(mockDownloadAudio).not.toHaveBeenCalled()`), `mockPlayResult` IS called exactly once with `localAudioUri: null`, `mockHistoryInsert` is called once with `audioPath: ''` + `audioByteSize: 0`, and the captured transient is unlinked. The test MUST fail before T156 lands. (001-wolof-translate-mobile:T152)
+- [X] T153 [P] [US1] Add a new Q6 download-failure test in `mobile-app/src/state/__tests__/pipeline-store.test.ts` titled `english_to_wolof download failure appends suffix and skips playback (Q6)` — arrange `mockDownloadAudio.mockResolvedValue(null)` and `mockPollUntilTerminal` to yield an `english_to_wolof` completion with `outputMode: 'wolof_audio'` + populated `audioUrl` + `translatedText: 'Jàmm'`. Drive `pressStart('english_to_wolof')` → `pressRelease(capturedUri, 3)`. Assert (a) `mockPlayResult` was NOT called with a terminal whose `localAudioUri` is a string (allow invocation with `localAudioUri: null` only if the Q6 implementation uses the playResult/speakText path — but per `plan.md` §Session 2026-04-20 Design Detail the Q6 edit SKIPS `defaultPlayer.playResult` entirely, so the cleaner assertion is `expect(mockPlayResult).not.toHaveBeenCalled()`), (b) `mockHistoryInsert` received `audioPath: ''` and a `translatedText` whose suffix is `"(failed to download audio)"`, (c) the phase cycles through `completed → playing → completed` via the `playbackStarted`/`playbackEnded` dispatch pair, (d) the captured transient is still unlinked. The test MUST fail before T157 lands. (001-wolof-translate-mobile:T153)
+- [X] T154 [P] [US1] Update the legacy Q7 fixtures in `mobile-app/src/state/__tests__/pipeline-store.test.ts:175` and `mobile-app/src/audio/__tests__/player.test.ts:69` from the pre-merge `{ outputMode: 'text_only', audioUrl: null }` shape to the post-merge `{ outputMode: 'english_audio', audioUrl: '/api/requests/req-1/audio' }` shape for `wolof_to_english`. Preserve every existing assertion in both files — the branch under test (TTS-only for `wolof_to_english`) is unchanged because Q4's guard at `pipeline-store.ts:150` keeps `localAudioUri = null` regardless of the new `audioUrl`, and `player.ts` keys its branch off `localAudioUri`, not off `audioUrl` or `outputMode`. Rename any helper constants (e.g., `baseTextOnly` → `baseWolofToEnglish` or similar) only if the fixture file exposes them outside the test — otherwise leave the naming in-place to minimize diff. (001-wolof-translate-mobile:T154)
+
+### Implementation
+
+- [X] T155 [US1] Verify the `playbackStarted` reducer's precondition in `mobile-app/src/pipeline/state-machine.ts:224-227` tolerates the Q6 cycle: the current guard is `if (state.phase !== 'completed') return state;`, so dispatching `playbackStarted` immediately after `jobCompleted` (phase=`completed`) transitions to `playing`, and the subsequent `playbackEnded` returns to `completed`. No reducer change required. Add a one-line comment at the top of the Q6 completion-branch edit in T157 recording this dependency so a future state-machine refactor doesn't silently break the cycle. (001-wolof-translate-mobile:T155)
+- [X] T156 [US1] Q4 guard — edit `mobile-app/src/state/pipeline-store.ts:150`. Replace `const localAudioUri = state.result.audioUrl ? await client.downloadAudio(requestId) : null;` with a conditional that ALSO short-circuits on `state.result.direction === 'wolof_to_english'` (ignore `audio_url` for this direction per FR-004 as amended 2026-04-20). The new comment carries the suffix `(001-wolof-translate-mobile:T156)`. Satisfies T152. (001-wolof-translate-mobile:T156)
+- [X] T157 [US1] Q6 download-failure suffix — edit the completion branch of `drainPoll` in `mobile-app/src/state/pipeline-store.ts` (just after the `terminal = { ... }` assignment). If `terminal.direction === 'english_to_wolof'` AND `terminal.localAudioUri === null`, append `' (failed to download audio)'` to `terminal.translatedText` BEFORE `persistToHistory(terminal)` runs. Do NOT invoke `defaultPlayer.playResult(terminal, …)` in that case; instead dispatch `{ type: 'playbackStarted' }` then `{ type: 'playbackEnded' }` so the phase cycles `completed → playing → completed` (safe per T155 verification). History insert still lands with `audioPath: ''` via the existing empty-`audioUrl` branch of `persistToHistory`. Transient capture is still unlinked. New comment carries the suffix `(001-wolof-translate-mobile:T157)`. Satisfies T153. (001-wolof-translate-mobile:T157)
+
+### Contract doc update
+
+- [X] T158 [P] [US1] Rewrite `mobile-app/specs/001-wolof-translate-mobile/contracts/bff-api.md` §2 (line 152-155 blockquote) from "`audio_url` is populated on every `english_to_wolof` completion response as of FR-039 … It is `null` for `wolof_to_english` completions" to "The BFF MAY populate `audio_url` on completions of either direction as of the 2026-04-20 merge (server-rendered English m4a for `wolof_to_english`). The mobile client MUST ignore `audio_url` for `wolof_to_english` per FR-004 (on-device `expo-speech`); `wolof_to_english` `audio_url` values, when populated, MUST NOT be downloaded, persisted, or played. See Session 2026-04-20 Q1/Q2/Q4.". Rewrite §6 line 292 similarly — note that `wolof_to_english` `audio_url` is now "server-rendered but client-ignored" rather than "always null". No change to the 15 MSW contract tests (§5) and no change to C11/C12 behavior. (001-wolof-translate-mobile:T158)
+
+### Verification
+
+- [X] T159 [US1] Manual verification: from `mobile-app/` run `npm test && npm run lint`. Assert (a) T152 + T153 + T154 tests pass, (b) no other test file in the repo regressed, (c) lint passes without new warnings. If a pre-existing test depended on the legacy `text_only`/`audioUrl: null` fixture, trace through the failure and update it to the Q7 shape as a drop-in fix — do NOT scope-creep into broader test restructuring. (001-wolof-translate-mobile:T159)
+
+### Commit
+
+- [X] T160 [Commit] `001-wolof-translate-mobile:Phase9-Session2026-04-20: contract-drift repair (Q1–Q8)` — single phase-scoped commit covering T152–T159 per Constitution VI. Commit body references the 2026-04-20 Clarifications block in `spec.md` and lists the Q1/Q2/Q4/Q6/Q7 decisions encoded. Q3/Q5/Q8 are noted as "no change required" in the commit body for auditability. (001-wolof-translate-mobile:T160)
+
+**Checkpoint — Phase 9**: `wolof_to_english` round-trips against the post-merge BFF use on-device `expo-speech` with zero `/api/requests/{id}/audio` GETs. `english_to_wolof` round-trips degrade gracefully when the download fails (translated text gets the `(failed to download audio)` suffix; no mispronounced TTS fallback). `contracts/bff-api.md` §2/§6 match the BFF's actual post-merge behavior. No BFF change; no UI mock change; no schema change. FR-004 drift (Q1) is closed.
+
+---
+
+## Phase 10 — Stuck direction-button bug fixes (B/C/D from `bug_fix.md`)
+
+**Goal**: Close the three remaining escape-path gaps surveyed in `mobile-app/bug_fix.md`. The user-visible symptom is the two direction buttons becoming permanently unresponsive (either `disabled` or enabled-but-inert) with no `RetryBanner` to recover, forcing an app force-kill. Bug A (non-`TranslationError` stranding `uploading`/`polling`) and the TTS `onEnded` bug were already fixed in commits `4580c92` and `70e19d7`; Bugs B, C, D are still present as of commit `cbb9d6a`.
+
+**Scope**: Mobile-client only. No BFF change. No new UI surface — Principle VIII (UI Mock-First) does not apply (behavior changes only). No schema change. No new dependency. Each bug ships as its own phase-scoped commit per Principle VI ("Commits MUST NOT bundle unrelated changes from different subtasks").
+
+**Independent Tests**:
+- Bug B: inject a fake player whose `playResult` returns `Promise.reject`; drive pipeline to `completed`; assert phase cycles `completed → playing → completed` and the rejection is logged.
+- Bug C: simulate `playbackStatusUpdate` events `{ isLoaded: false, playing: false }` twice without `didJustFinish`; assert `opts.onEnded` fires exactly once.
+- Bug D: (i) recorder permission denial → `start()` returns without flipping status to `recording` AND pipeline-store phase returns to `idle`; (ii) `recorder.start()` rejection → pipeline-store phase cycles `recording → idle` via `discard()`.
+
+### Bug B — `playResult` rejection silently dropped
+
+Current site: `src/state/pipeline-store.ts:207-222` (both TTS and audio-file playback paths). The `void` operator discards the returned promise; if `configureForPlayback`, `createAudioPlayer`, or `Speech.speak` throws before the listener is wired, `onEnded` is never invoked and phase is stuck at `playing`.
+
+#### Tests (TDD — Constitution II; authored BEFORE implementation)
+
+- [X] T161 [P] Add a Jest test in `src/state/__tests__/pipeline-store.test.ts` titled `playResult rejection recovers the playing phase to completed (Bug B)`. Arrange `mockPlayResult.mockRejectedValueOnce(new Error('boom'))` on an `english_to_wolof` completion with `outputMode: 'wolof_audio'` and a populated `audioUrl`; `mockDownloadAudio.mockResolvedValue('file:///document/audio/req-1.m4a')`. Drive `pressStart('english_to_wolof')` → `pressRelease(capturedUri, 3)`, then flush microtasks so the `.catch` handler runs. Assert (a) final phase is `'completed'`, (b) `mockHistoryInsert` was still called (completion persisted before playback attempted), (c) `deleteAsync` still unlinked the transient, (d) a `log('error', 'playback', ...)` entry was appended to `dev-log-store`. Test MUST fail against the current `void defaultPlayer.playResult(...)` call site. (001-wolof-translate-mobile:T161)
+
+#### Implementation
+
+- [X] T162 Edit `src/state/pipeline-store.ts` happy-path playback block (the `else` branch around lines 206-222). Replace `void defaultPlayer.playResult(terminal, { … })` with a non-`void` call that attaches `.catch((err) => { log('error', 'playback', 'playResult rejected', { err: String(err) }); dispatch({ type: 'playbackEnded' }); })`. Keep `onEnded` and `onInterruptionBegan` handlers unchanged. The `playbackEnded` reducer already guards `if (state.phase !== 'playing') return state;` so a stray second dispatch from a late-arriving `onEnded` is idempotent. New comment carries `(001-wolof-translate-mobile:T162)`. Satisfies T161. (001-wolof-translate-mobile:T162)
+
+#### Commit
+
+- [X] T163 [Commit] `001-wolof-translate-mobile:Phase10-BugB: recover playing phase from playResult rejection` — single-bug-scoped commit covering T161–T162 per Principle VI. Commit body cites `bug_fix.md` §Bug B and the three realistic triggers (audio-session conflict, corrupt file, sync Speech.speak throw). (001-wolof-translate-mobile:T163)
+
+### Bug C — `playbackStatusUpdate` listener misses load-failure completion
+
+Current site: `src/audio/player.ts:74-84`. Listener fires `opts.onEnded` only on `status.didJustFinish` or the `lastPlaying && !playing` natural-pause transition. A corrupt / 0-byte audio file emits `{ isLoaded: false, playing: false }` events with no `didJustFinish` and `lastPlaying` never flips to `true`, so `onEnded` is never called. Phase stuck at `playing`.
+
+**Context7 prerequisite**: per user's global CLAUDE.md rule ("Always use context7 MCP when I need library/API documentation"), the fix begins with a documentation lookup of `expo-audio`'s `playbackStatusUpdate` event shape (fields `isLoaded`, `error`, `didJustFinish`, `playing`). T164 is that research step.
+
+#### Research
+
+- [X] T164 Fetch the current `expo-audio` `AudioPlayer.playbackStatusUpdate` event payload shape via Context7 (resolve-library-id → get-library-docs for the SDK 55 line). Record, in a comment on T164's commit, the confirmed field list the client can key on (at minimum: `isLoaded`, `didJustFinish`, `playing`, and any `error` field). If Context7 is disabled/disconnected, warn the user and halt per the global rule. The outcome decides whether T167 adopts Option 1 (listener-keyed on `isLoaded === false` / `error != null`) or falls back to Option 2 (pipeline-store watchdog). (001-wolof-translate-mobile:T164) — Resolved library `/websites/expo_dev_versions_sdk`. Context7 confirmed `AudioStatus` exposes `isLoaded`, `didJustFinish`, `playing`, `currentTime`, `duration`, `id`, `isBuffering`, `loop`, `mediaServicesDidReset` (iOS), `mute`, `playbackRate`, `playbackState`, `reasonForWaitingToPlay`, `shouldCorrectPitch`, `timeControlStatus`; **no discrete `error` field is documented**. Adopted **Option 1** (listener keys on `isLoaded === false`); T166 superseded.
+
+#### Tests (TDD — Constitution II; authored BEFORE implementation)
+
+- [X] T165 [P] Add a Jest test in `src/audio/__tests__/player.test.ts` titled `playResult: listener fires onEnded once on persistent isLoaded:false status (Bug C)`. Use the existing `makeFakePlayer` helper; after calling `player.playResult(baseWolofAudio, { onEnded })`, invoke the captured `addListener` callback twice with `{ isLoaded: false, playing: false }` and no `didJustFinish`. Assert `onEnded` was called exactly once (no double-fire on the second event). Test MUST fail against the current listener body. (001-wolof-translate-mobile:T165)
+- [X] T166 (superseded — Option 1 adopted per T164; `expo-audio` SDK 55 `AudioStatus.isLoaded` is documented and reliable, so no pipeline-store watchdog is needed). (001-wolof-translate-mobile:T166)
+
+#### Implementation
+
+- [X] T167 Extend `AudioPlayerLike` in `src/audio/player.ts` to declare the `isLoaded` and (if Context7 confirms) `error` fields on the status payload. In the `playbackStatusUpdate` listener body, add a branch: if the status has been received at least once AND `isLoaded === false` (or `error != null`), invoke `opts.onEnded?.()` (guarded to run at most once per playback session via a `finished` flag). If T164 mandated Option 2, additionally implement a `setTimeout`-based watchdog in `pipeline-store.ts:drainPoll` completion branch keyed on `max(15_000, 2 * resultDurationSec * 1000)`; clear on `playbackEnded` / `discard`. New comments carry `(001-wolof-translate-mobile:T167)`. Satisfies T165 (and T166 if present). (001-wolof-translate-mobile:T167)
+
+#### Commit
+
+- [X] T168 [Commit] `001-wolof-translate-mobile:Phase10-BugC: fire onEnded on audio load failure` — single-bug-scoped commit covering T164–T167 per Principle VI. Commit body cites `bug_fix.md` §Bug C, the three realistic triggers (corrupt file, unlink race, native load error), and which option (1 listener-keyed, 2 watchdog, or both) was adopted and why. (001-wolof-translate-mobile:T168)
+
+### Bug D — inert `recording` phase after failed mic start
+
+Current sites:
+- `app/index.tsx:27-44` — `useMicPermissionDeniedHandler` shows an `Alert.alert` but never calls `discard()`, so phase is already `'recording'` (flipped by `pressStart` at line 80) and stays there.
+- `app/index.tsx:75-82` — `handlePressIn` dispatches `pressStart` BEFORE awaiting `recorder.start()`, and fires `start()` with `void` (no `.catch`). Any throw from `configureForRecording`, `prepareToRecordAsync`, or `record()` is swallowed. Subsequent `handlePressIn` invocations early-return because phase !== idle/completed; `handlePressOut` early-returns because `recorder.status !== 'recording'`. Only resolution is an app force-kill.
+- `src/audio/recorder.ts:102-120` — `start()` returns silently on `!granted` (fires `onPermissionDenied` then resolves, does not throw).
+
+#### Tests (TDD — Constitution II; authored BEFORE implementation)
+
+- [X] T169 [P] Extend `src/audio/__tests__/recorder.test.ts` with a test titled `start(): permission denial fires onPermissionDenied and keeps status idle (Bug D, recorder layer)`. Mock `AudioModule.getRecordingPermissionsAsync` and `AudioModule.requestRecordingPermissionsAsync` to both resolve `{ granted: false }`. Call `start()`; assert (a) `onPermissionDenied` was called exactly once, (b) `status` is still `'idle'`, (c) `configureForRecording` was NEVER called (short-circuit before session configuration). This test may partially overlap with existing recorder-layer tests — extend in place if so, do NOT create a duplicate. (001-wolof-translate-mobile:T169)
+- [X] T170 [P] Add an integration test in a new file `app/__tests__/main-screen.test.tsx` (or the nearest existing test harness for the Main screen — check via `ls app/__tests__` before creating a new file) titled `Main screen: recorder permission denial returns phase to idle (Bug D)`. Mock `useRecorder` so that calling its returned `start()` synchronously invokes the `onPermissionDenied` option then resolves. Render `MainScreen` via `@testing-library/react-native`, press an `english_to_wolof` direction button, then flush microtasks. Assert `usePipelineStore.getState().phase === 'idle'` after the press. Test MUST fail against the current `handlePressIn` body that leaves phase at `'recording'`. (001-wolof-translate-mobile:T170)
+- [X] T171 [P] Add a second integration test in the same file titled `Main screen: recorder.start() rejection returns phase to idle (Bug D, thrown path)`. Mock `useRecorder.start()` to return `Promise.reject(new Error('prepareToRecordAsync failed'))`. Render and press, flush microtasks, assert phase is `'idle'`. (001-wolof-translate-mobile:T171)
+
+#### Implementation
+
+- [X] T172 Edit `app/index.tsx`:
+  - Modify `useMicPermissionDeniedHandler` to accept (or co-locate with) a `discard` reference from `usePipelineStore`, OR simpler: change `handlePressIn` to pass a composed callback `() => { onPermissionDenied(); discard(); }` when constructing the `useRecorder` options at lines 67-73. Choose the simplest form that keeps the existing alert UX intact.
+  - Change `handlePressIn` to attach a `.catch` to the recorder start promise: `recorder.start().catch(() => { discard(); });`. Drop the `void` prefix.
+  - The order `pressStart(...) → recorder.start().catch(...)` stays; the `.catch` path calls `discard()` which returns phase to `'idle'` and also clears any transient store state.
+  - New comments carry `(001-wolof-translate-mobile:T172)`.
+  Satisfies T170 and T171. (001-wolof-translate-mobile:T172)
+
+#### Commit
+
+- [X] T173 [Commit] `001-wolof-translate-mobile:Phase10-BugD: recover recording phase from start failures` — single-bug-scoped commit covering T169–T172 per Principle VI. Commit body cites `bug_fix.md` §Bug D and the four realistic triggers (permission revoke mid-session, first-launch denial, `prepareToRecordAsync` hardware contention, `configureForRecording` session-mode failure). (001-wolof-translate-mobile:T173)
+
+### Bookkeeping
+
+- [X] T174 Move `mobile-app/bug_fix.md` into `specs/001-wolof-translate-mobile/bug-log.md` (or delete it if Phase 10 closes every item) so the repo root stays clean and the audit trail lives with the spec. Do this as part of T173's commit (tiny diff, same bug-scope) OR as a separate housekeeping commit — whichever keeps per-commit diffs tightly scoped. (001-wolof-translate-mobile:T174)
+
+**Checkpoint — Phase 10**: all three stuck-phase escape paths closed. `playing` phase recovers from `playResult` rejection (T162) and from audio load failure (T167). `recording` phase recovers from permission denial (T172a) and `recorder.start()` rejection (T172b). No new BFF change, no new UI surface, no new dependency. `bug_fix.md` is retired.

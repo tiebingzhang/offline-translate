@@ -1,3 +1,8 @@
+import { act, renderHook } from '@testing-library/react-native';
+import { AudioModule, useAudioRecorder } from 'expo-audio';
+
+import { configureForRecording } from '@/audio/session';
+
 import {
   computeRecordingTick,
   COUNTDOWN_BEGIN_AT_SEC,
@@ -5,7 +10,19 @@ import {
   MIN_RECORDING_SEC,
   RECORDER_OPTIONS,
   shouldSubmitRecording,
+  useRecorder,
 } from '../recorder';
+
+// Bug D regression lock — verify the recorder-layer contract the MainScreen
+// caller relies on: permission denial short-circuits BEFORE session
+// configuration. This is additive coverage, not a failing-then-passing test:
+// current implementation already satisfies the assertions; the test exists to
+// prevent regression of the single-source-of-truth contract.
+// (001-wolof-translate-mobile:T169)
+jest.mock('@/audio/session', () => ({
+  configureForRecording: jest.fn(async () => {}),
+  configureForPlayback: jest.fn(async () => {}),
+}));
 
 describe('recorder — pure timing helpers', () => {
   describe('computeRecordingTick', () => {
@@ -67,5 +84,45 @@ describe('recorder — pure timing helpers', () => {
     test('iOS output format is MPEG4 AAC', () => {
       expect(RECORDER_OPTIONS.ios?.outputFormat).toBeDefined();
     });
+  });
+});
+
+describe('useRecorder hook — permission handling (Bug D)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Baseline useAudioRecorder from jest.setup.ts returns undefined — override
+    // with a minimal shape so the hook body can construct without crashing.
+    // (001-wolof-translate-mobile:T169)
+    (useAudioRecorder as jest.Mock).mockReturnValue({
+      prepareToRecordAsync: jest.fn(async () => {}),
+      record: jest.fn(),
+      stop: jest.fn(async () => {}),
+      uri: null,
+    });
+  });
+
+  test('start(): permission denial fires onPermissionDenied and keeps status idle (Bug D, recorder layer)', async () => {
+    // Override jest.setup.ts defaults (granted: true) for this test only.
+    // (001-wolof-translate-mobile:T169)
+    (
+      AudioModule.getRecordingPermissionsAsync as jest.Mock
+    ).mockResolvedValueOnce({ granted: false });
+    (
+      AudioModule.requestRecordingPermissionsAsync as jest.Mock
+    ).mockResolvedValueOnce({ granted: false });
+
+    const onPermissionDenied = jest.fn();
+    const { result } = renderHook(() => useRecorder({ onPermissionDenied }));
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    // (a) denial callback fires exactly once
+    expect(onPermissionDenied).toHaveBeenCalledTimes(1);
+    // (b) status did NOT flip to 'recording' — stays 'idle'
+    expect(result.current.status).toBe('idle');
+    // (c) session configuration short-circuited — never invoked on denial
+    expect(configureForRecording).not.toHaveBeenCalled();
   });
 });
