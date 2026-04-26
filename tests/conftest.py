@@ -15,6 +15,7 @@ import pytest
 
 from web_server import (
     JobStore,
+    TextSpeechConfig,
     WebAppRequestHandler,
     _encode_pcm16_wav,
     encode_pcm_to_aac_m4a,
@@ -81,6 +82,10 @@ def bff_server():
     # but must be present to avoid AttributeError in unrelated routes.
     server.whisper_configs = {}
     server.speech_config = None
+    server.text_speech_config = TextSpeechConfig(
+        url="http://127.0.0.1:8000/speak",
+        request_timeout_seconds=5,
+    )
     server.say_config = None
     server.translation_service_config = None
     server.job_store = JobStore()
@@ -112,6 +117,22 @@ def client(bff_server):
 
         def get(self, path: str):
             req = urlreq.Request(self.base_url + path, method="GET")
+            try:
+                resp = urlreq.urlopen(req, timeout=5)
+                return resp.status, resp.read(), dict(resp.headers)
+            except urlerr.HTTPError as exc:
+                return exc.code, exc.read(), dict(exc.headers)
+
+        def post_json(self, path: str, payload: dict):
+            import json
+
+            body = json.dumps(payload).encode("utf-8")
+            req = urlreq.Request(
+                self.base_url + path,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
             try:
                 resp = urlreq.urlopen(req, timeout=5)
                 return resp.status, resp.read(), dict(resp.headers)
