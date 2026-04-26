@@ -38,6 +38,7 @@ WHISPER_ENV="DYLD_LIBRARY_PATH=${WHISPER_DYLD} DYLD_FALLBACK_LIBRARY_PATH=${WHIS
 # name | cwd | command...
 SERVICES=(
   "whisper-en2wo|${WHISPER_DIR}|${WHISPER_ENV} ${WHISPER_BIN} --port 8080 -m models/whisper-medium-english-2-wolof.gguf"
+  "translate|${REPO_ROOT}|${PYTHON} translate.py --port 8000"
   "wolof-speech|${REPO_ROOT}|${PYTHON} wolof_speech_server.py --port 8001"
   "whisper-wo|${WHISPER_DIR}|${WHISPER_ENV} ${WHISPER_BIN} --port 8081 -m models/whisper-small-wolof.gguf"
   "wolof2en|${REPO_ROOT}|${PYTHON} wolof_to_english_translate_server.py --port 8002"
