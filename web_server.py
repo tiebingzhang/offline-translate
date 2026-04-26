@@ -76,6 +76,12 @@ class TranslationServiceConfig:
     request_timeout_seconds: int
 
 
+@dataclass(frozen=True)
+class TextSpeechConfig:
+    url: str
+    request_timeout_seconds: int
+
+
 class JobStore:
     def __init__(self):
         self._jobs = {}
@@ -424,6 +430,42 @@ def call_speech_server(text, speech_config):
         raise RuntimeError(f"Wolof speech server request failed: {exc.reason}") from exc
 
 
+def call_english_text_speech_server(text, text_speech_config, output_path, chunk_chars=None):
+    payload = {
+        "text": text,
+        "play": False,
+        "wait": False,
+        "output_path": str(output_path),
+    }
+    if chunk_chars is not None:
+        payload["chunk_chars"] = chunk_chars
+
+    req = request.Request(
+        text_speech_config.url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=text_speech_config.request_timeout_seconds) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"English text speech server returned HTTP {exc.code}: {body_text}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"English text speech server request failed: {exc.reason}") from exc
+
+    output_path_value = str(result.get("output_path", "")).strip()
+    wolof_text = str(result.get("wolof_text", "")).strip()
+    if not output_path_value:
+        raise RuntimeError("English text speech server response did not include 'output_path'.")
+    if not wolof_text:
+        raise RuntimeError("English text speech server response did not include non-empty 'wolof_text'.")
+
+    return result
+
+
 def call_wolof_to_english_translation_service(text, translation_config):
     payload = json.dumps({"text": text}).encode("utf-8")
     req = request.Request(
@@ -732,6 +774,71 @@ def process_request_job(
         fail_job(job_store, request_id, stage, exc)
 
 
+def process_text_request_job(
+    request_id,
+    text_request,
+    text_speech_config,
+    job_store,
+):
+    stage = "queued"
+    text = text_request["text"]
+    chunk_chars = text_request.get("chunk_chars")
+
+    def start_processing(job):
+        job["status"] = "processing"
+        job["stage"] = "queued"
+        job["stage_detail"] = "Text accepted. Preparing English-to-Wolof speech pipeline."
+        job["started_processing_at_ms"] = now_monotonic_ms()
+
+    job_store.mutate(request_id, start_processing)
+
+    try:
+        stage = "generating_speech"
+        started_at_ms = update_job_stage(
+            job_store,
+            request_id,
+            stage,
+            "Translating English text and generating Wolof speech.",
+        )
+        wav_disk_path = Path("generated_audio") / f"{request_id}.wav"
+        speech_result = call_english_text_speech_server(
+            text,
+            text_speech_config,
+            wav_disk_path,
+            chunk_chars=chunk_chars,
+        )
+        wav_disk_path = Path(speech_result["output_path"])
+        wav_bytes = wav_disk_path.read_bytes()
+        m4a_bytes = encode_pcm_to_aac_m4a(wav_bytes)
+        m4a_disk_path = wav_disk_path.parent / f"{request_id}.m4a"
+        m4a_disk_path.write_bytes(m4a_bytes)
+        speech_result["output_path_m4a"] = str(m4a_disk_path)
+        record_stage_timing(job_store, request_id, stage, started_at_ms)
+
+        translation_result = {
+            "english_chunks": speech_result.get("english_chunks"),
+            "wolof_chunks": speech_result.get("wolof_chunks"),
+            "wolof_text": speech_result["wolof_text"],
+        }
+        complete_job(
+            job_store,
+            request_id,
+            {
+                "direction": "english_to_wolof",
+                "target_language": "wolof",
+                "transcribed_text": text,
+                "translated_text": speech_result["wolof_text"],
+                "whisper_response": None,
+                "translation_result": translation_result,
+                "output_mode": "wolof_audio",
+                "speech_result": speech_result,
+                "audio_url": f"/api/requests/{request_id}/audio",
+            },
+        )
+    except Exception as exc:
+        fail_job(job_store, request_id, stage, exc)
+
+
 class WebAppRequestHandler(BaseHTTPRequestHandler):
     server_version = "WolofTranslateWebServer/0.1"
 
@@ -789,6 +896,10 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed_path = parse.urlparse(self.path)
         route_path = parsed_path.path
+
+        if route_path == "/api/text-translate-speak":
+            self._handle_text_translate_speak()
+            return
 
         if route_path != "/api/translate-speak":
             self._write_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
@@ -880,6 +991,88 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
                 "status": "queued",
                 "stage": "queued",
                 "direction": upload["direction"],
+                "status_url": f"/api/requests/{request_id}",
+                "poll_after_ms": 500,
+            },
+        )
+
+    def _handle_text_translate_speak(self):
+        request_id = uuid.uuid4().hex[:8]
+        try:
+            payload = self._read_json_body()
+            text = str(payload.get("text", "")).strip()
+            if not text:
+                raise ValueError("Request body must include non-empty 'text'.")
+            chunk_chars = payload.get("chunk_chars")
+            if chunk_chars is not None:
+                chunk_chars = int(chunk_chars)
+                if chunk_chars <= 0:
+                    raise ValueError("'chunk_chars' must be a positive integer.")
+        except (TypeError, ValueError) as exc:
+            LOGGER.warning("[%s] Invalid text request: %s", request_id, exc)
+            self._write_json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "request_id": request_id,
+                    "status": "failed",
+                    "error": {
+                        "message": str(exc),
+                        "type": "BadRequest",
+                        "stage": "text_validation",
+                    },
+                },
+            )
+            return
+
+        encoded_text = text.encode("utf-8")
+        text_request = {"text": text}
+        if chunk_chars is not None:
+            text_request["chunk_chars"] = chunk_chars
+
+        LOGGER.info(
+            "[%s] Received text translate-speak request chars=%s bytes=%s",
+            request_id,
+            len(text),
+            len(encoded_text),
+        )
+
+        job = {
+            "request_id": request_id,
+            "status": "queued",
+            "stage": "queued",
+            "stage_detail": "Text accepted. Waiting to start processing.",
+            "direction": "english_to_wolof",
+            "target_language": "wolof",
+            "input_mode": "english_text",
+            "content_type": "application/json",
+            "bytes_received": len(encoded_text),
+            "created_at_ms": now_epoch_ms(),
+            "updated_at_ms": now_epoch_ms(),
+            "timings_ms": {},
+            "result": None,
+            "error": None,
+        }
+        self.server.job_store.create(job)
+
+        worker = threading.Thread(
+            target=process_text_request_job,
+            args=(
+                request_id,
+                text_request,
+                self.server.text_speech_config,
+                self.server.job_store,
+            ),
+            daemon=True,
+        )
+        worker.start()
+
+        self._write_json(
+            HTTPStatus.ACCEPTED,
+            {
+                "request_id": request_id,
+                "status": "queued",
+                "stage": "queued",
+                "direction": "english_to_wolof",
                 "status_url": f"/api/requests/{request_id}",
                 "poll_after_ms": 500,
             },
@@ -998,6 +1191,17 @@ class WebAppRequestHandler(BaseHTTPRequestHandler):
             "bytes": payload,
         }
 
+    def _read_json_body(self):
+        content_length = int(self.headers.get("Content-Length", "0"))
+        if content_length <= 0:
+            raise ValueError("Missing request body.")
+
+        raw_body = self.rfile.read(content_length)
+        try:
+            return json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid JSON: {exc.msg}") from exc
+
     def _write_json(self, status, payload):
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -1012,6 +1216,7 @@ def serve(
     port=8090,
     whisper_configs=None,
     speech_config=None,
+    text_speech_config=None,
     say_config=None,
     translation_service_config=None,
     verbose=False,
@@ -1039,6 +1244,10 @@ def serve(
         play=False,
         wait=False,
         output_path=None,
+        request_timeout_seconds=120,
+    )
+    server.text_speech_config = text_speech_config or TextSpeechConfig(
+        url="http://127.0.0.1:8000/speak",
         request_timeout_seconds=120,
     )
     server.say_config = say_config or SayConfig(
@@ -1119,6 +1328,17 @@ def main():
         help="Timeout when waiting for the Wolof speech server.",
     )
     parser.add_argument(
+        "--english-text-speech-server-url",
+        default="http://127.0.0.1:8000/speak",
+        help="English text to Wolof speech service endpoint.",
+    )
+    parser.add_argument(
+        "--english-text-speech-timeout-seconds",
+        type=int,
+        default=120,
+        help="Timeout when waiting for the English text to Wolof speech service.",
+    )
+    parser.add_argument(
         "--english-play",
         action="store_true",
         help="Enable macOS say playback for Wolof-to-English requests.",
@@ -1176,6 +1396,10 @@ def main():
             wait=args.speech_wait,
             output_path=args.speech_output_path,
             request_timeout_seconds=args.speech_timeout_seconds,
+        ),
+        text_speech_config=TextSpeechConfig(
+            url=args.english_text_speech_server_url,
+            request_timeout_seconds=args.english_text_speech_timeout_seconds,
         ),
         say_config=SayConfig(
             play=args.english_play,
